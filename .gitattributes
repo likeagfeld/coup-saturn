@@ -1,0 +1,12 @@
+# Force LF line endings on source files and build scripts.
+# A Windows clone otherwise ships CRLF into Linux Docker builds and
+# breaks things cryptically (shell scripts fail to parse, Makefiles
+# choke on backslash-r, C compilers warn on trailing CR in strings).
+
+*.sh        text eol=lf
+*.py        text eol=lf
+Makefile    text eol=lf
+*.mk        text eol=lf
+*.c         text eol=lf
+*.h         text eol=lf
+*.bat       text eol=crlf

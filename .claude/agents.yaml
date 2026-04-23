@@ -1,0 +1,195 @@
+# cui Agent Configuration
+# Machine-readable agent definitions for the cui component library
+
+agents:
+  supervisor:
+    purpose: "Orchestrates workflow, coordinates between agents"
+    write_access: []
+    read_access: ["**/*"]
+    blocked: []
+
+  component-lead:
+    purpose: "Proposes new components or improvements"
+    write_access:
+      - "components/proposals/"
+      - ".claude/agents/component-lead.md"
+    read_access:
+      - "components/"
+      - "core/include/"
+      - "CLAUDE.md"
+    blocked: []
+
+  design-agent:
+    purpose: "Creates detailed component specifications"
+    write_access:
+      - "components/designs/"
+      - ".claude/agents/design-agent.md"
+    read_access:
+      - "components/"
+      - "core/include/"
+    blocked: []
+
+  spec-agent:
+    purpose: "Defines component interfaces in headers"
+    write_access:
+      - "core/include/"
+      - ".claude/agents/spec-agent.md"
+    read_access:
+      - "components/designs/"
+      - "core/include/"
+    blocked:
+      - "core/src/"
+      - "pal/"
+
+  core-agent:
+    purpose: "Implements platform-independent component logic"
+    write_access:
+      - "core/src/"
+      - ".claude/agents/core-agent.md"
+    read_access:
+      - "core/include/"
+      - "components/designs/"
+      - "tests/"
+    blocked:
+      - "pal/"
+
+  pal-sdl-agent:
+    purpose: "SDL platform abstraction implementation"
+    write_access:
+      - "pal/sdl/"
+      - ".claude/agents/pal-sdl-agent.md"
+    read_access:
+      - "core/include/"
+      - "core/src/"
+    blocked:
+      - "pal/n64/"
+      - "pal/saturn/"
+      - "pal/wiiu/"
+
+  pal-n64-agent:
+    purpose: "N64 platform abstraction implementation"
+    write_access:
+      - "pal/n64/"
+      - ".claude/agents/pal-n64-agent.md"
+    read_access:
+      - "core/include/"
+      - "core/src/"
+    blocked:
+      - "pal/sdl/"
+      - "pal/saturn/"
+      - "pal/wiiu/"
+
+  pal-saturn-agent:
+    purpose: "Saturn platform abstraction implementation"
+    write_access:
+      - "pal/saturn/"
+      - ".claude/agents/pal-saturn-agent.md"
+    read_access:
+      - "core/include/"
+      - "core/src/"
+      - "docs/saturn/"
+      - "examples/saturn/"
+    blocked:
+      - "pal/sdl/"
+      - "pal/n64/"
+      - "pal/wiiu/"
+    # Session ID with Saturn docs/examples pre-loaded (Feb 2026)
+    # Note: resources/saturn/ moved to separate repo; examples under examples/saturn/
+    resume_session: "a0234e0"
+
+  pal-wiiu-agent:
+    purpose: "Wii U platform abstraction implementation"
+    write_access:
+      - "pal/wiiu/"
+      - ".claude/agents/pal-wiiu-agent.md"
+    read_access:
+      - "core/include/"
+      - "core/src/"
+    blocked:
+      - "pal/sdl/"
+      - "pal/n64/"
+      - "pal/saturn/"
+
+  test-agent:
+    purpose: "Writes unit tests (TDD methodology)"
+    write_access:
+      - "tests/"
+      - ".claude/agents/test-agent.md"
+    read_access:
+      - "core/include/"
+      - "components/designs/"
+    blocked: []
+
+  coup-rules-agent:
+    purpose: "Maintains the Coup card game rule engine and tests"
+    write_access:
+      - "examples/coup/coup_rules.h"
+      - "examples/coup/coup_rules.c"
+      - "examples/coup/coup_event_log.h"
+      - "examples/coup/coup_event_log.c"
+      - "tests/coup/"
+      - ".claude/agents/coup-rules-agent.md"
+    read_access:
+      - "examples/coup/"
+      - "tests/coup/"
+      - "Makefile"
+    blocked:
+      - "examples/coup/coup_game.c"
+      - "examples/coup/coup_render.c"
+      - "examples/coup/coup_audio.c"
+      - "pal/"
+
+  storybook-agent:
+    purpose: "Maintains component gallery application"
+    write_access:
+      - "storybook/"
+      - ".claude/agents/storybook-agent.md"
+    read_access:
+      - "core/include/"
+      - "core/src/"
+      - "pal/"
+    blocked: []
+
+# Shared files requiring supervisor coordination
+shared_files:
+  - "core/include/cui_pal.h"
+  - "core/include/cui_types.h"
+  - "core/include/cui_component.h"
+
+# Component workflow stages
+workflow:
+  stages:
+    - name: "proposal"
+      agent: "component-lead"
+      output: "components/proposals/"
+      requires_approval: true
+
+    - name: "design"
+      agent: "design-agent"
+      output: "components/designs/"
+      requires_approval: false
+
+    - name: "test"
+      agent: "test-agent"
+      output: "tests/"
+      methodology: "TDD"
+
+    - name: "interface"
+      agent: "spec-agent"
+      output: "core/include/"
+
+    - name: "implementation"
+      agent: "core-agent"
+      output: "core/src/"
+
+    - name: "platform"
+      agents:
+        - "pal-sdl-agent"
+        - "pal-n64-agent"
+        - "pal-saturn-agent"
+        - "pal-wiiu-agent"
+      output: "pal/"
+
+    - name: "gallery"
+      agent: "storybook-agent"
+      output: "storybook/"

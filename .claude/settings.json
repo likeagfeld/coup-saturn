@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/r11/Projects/cui/.claude/hooks/component-storybook-check.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

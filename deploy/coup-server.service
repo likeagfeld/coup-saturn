@@ -1,0 +1,14 @@
+[Unit]
+Description=Coup Card Game Server
+After=network.target
+
+[Service]
+Type=simple
+User=gary
+WorkingDirectory=/opt/coup-server/tools/coup_server
+ExecStart=/usr/bin/python3 server.py --port 4821 --ws-port 4823
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+# Downloaded audio source files (CC0 licensed, re-downloadable)
+# Run convert_sfx.py to regenerate coup_sfx_data.h from these.
+*.zip
+*.wav
+*.ogg
+*.mp3
+kenney_ui/
+kenney_casino/
+cardsounds/
