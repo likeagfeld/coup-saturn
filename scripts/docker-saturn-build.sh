@@ -10,8 +10,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Default Jo Engine location
-JOENGINE_ROOT="${JOENGINE_ROOT:-$HOME/Projects/retro/saturn/engines/joengine}"
+# Baked image with Jo Engine + SH-2 toolchain. Built from
+# scripts/saturn-build.Dockerfile on first use; the joengine SHA is
+# pinned there. Rebuild with: docker build --no-cache \
+#   -f scripts/saturn-build.Dockerfile -t coup-saturn-build:latest scripts/
+IMAGE_TAG="coup-saturn-build:latest"
+DOCKERFILE="$SCRIPT_DIR/saturn-build.Dockerfile"
 
 # Colors
 RED='\033[0;31m'
@@ -27,10 +31,13 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-if [ ! -d "$JOENGINE_ROOT" ]; then
-    echo_error "Jo Engine not found at: $JOENGINE_ROOT"
-    echo "Set JOENGINE_ROOT to your Jo Engine installation"
-    exit 1
+# Build the baked image if missing. --platform pin matches runtime.
+if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+    echo_info "Building $IMAGE_TAG (first run; ~1-2 min)..."
+    docker build --platform linux/amd64 \
+        -f "$DOCKERFILE" \
+        -t "$IMAGE_TAG" \
+        "$SCRIPT_DIR"
 fi
 
 # Build directory to compile
@@ -44,7 +51,7 @@ fi
 SATURN_RES_DEFINE="${2:-}"
 
 echo_info "Building Saturn ROM using Docker..."
-echo_info "  Jo Engine: $JOENGINE_ROOT"
+echo_info "  Image:     $IMAGE_TAG"
 echo_info "  Build dir: $BUILD_DIR"
 if [ -n "$SATURN_RES_DEFINE" ]; then
     echo_info "  Resolution: $SATURN_RES_DEFINE"
@@ -68,30 +75,36 @@ docker_path() {
 }
 
 DOCKER_PROJECT=$(docker_path "$PROJECT_ROOT")
-DOCKER_JOENGINE=$(docker_path "$JOENGINE_ROOT")
 
 # Get relative path from project root to build dir
 REL_BUILD_DIR="${BUILD_DIR#$PROJECT_ROOT/}"
 
-# Run build in Docker using Ubuntu with necessary tools
-# Use --platform linux/amd64 for Apple Silicon Macs (Jo Engine ships x86_64 Linux binaries)
-# MSYS_NO_PATHCONV=1 prevents Git Bash from mangling paths passed to docker
+# Optional: bind-mount a local Jo Engine checkout over the image's
+# baked copy. Use this when iterating on the engine fork itself.
+#   JOENGINE_LOCAL=~/Projects/retro/saturn/engines/joengine make coup-saturn
+LOCAL_JOENGINE_ARG=()
+if [ -n "${JOENGINE_LOCAL:-}" ]; then
+    if [ ! -d "$JOENGINE_LOCAL" ]; then
+        echo_error "JOENGINE_LOCAL not found: $JOENGINE_LOCAL"
+        exit 1
+    fi
+    echo_info "  Override:  $JOENGINE_LOCAL -> /joengine"
+    LOCAL_JOENGINE_ARG=(-v "$(docker_path "$JOENGINE_LOCAL"):/joengine")
+fi
+
+# Run build using the baked image. JOENGINE_ROOT=/joengine is already
+# set in the image ENV; makefiles can consume it as-is.
 MSYS_NO_PATHCONV=1 docker run --rm \
     --platform linux/amd64 \
     -v "$DOCKER_PROJECT:/cui" \
-    -v "$DOCKER_JOENGINE:/joengine" \
+    "${LOCAL_JOENGINE_ARG[@]}" \
     -w "/cui/$REL_BUILD_DIR" \
-    -e "JOENGINE_ROOT=/joengine" \
     -e "SATURN_RES_DEFINE=$SATURN_RES_DEFINE" \
-    ubuntu:22.04 \
+    "$IMAGE_TAG" \
     bash -c '
-        # Install minimal dependencies
-        apt-get update -qq && apt-get install -y -qq make mkisofs > /dev/null 2>&1
-
-        # Make the Linux compiler executable
-        chmod +x /joengine/Compiler/LINUX/bin/*
-
-        # Build
+        # Local-mount case: bind-mounted checkouts may lack +x on the
+        # Linux toolchain binaries (common when cloned on macOS/Windows).
+        chmod +x /joengine/Compiler/LINUX/bin/* 2>/dev/null || true
         make clean 2>/dev/null || true
         make all SATURN_RES_DEFINE="$SATURN_RES_DEFINE"
     '
