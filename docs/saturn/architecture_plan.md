@@ -803,13 +803,9 @@ void test_saturn_rect_layer(void) {
 
 ### 8.3 Visual Regression Testing
 
-Use the SDL screenshot capture + simulation mode to create baseline images:
-
-```bash
-# Run storybook in Saturn simulation, capture each component
-make storybook
-./build/storybook --simulate saturn --screenshot-dir tests/baselines/saturn/
-```
+Use the SDL screenshot capture + simulation mode to create baseline images.
+(Storybook tooling was removed when this repo was split off from the cui
+sandbox; revisit this section if visual regression tests are reintroduced.)
 
 ---
 

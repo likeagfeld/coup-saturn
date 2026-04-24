@@ -306,17 +306,13 @@ void my_frame_callback(void) {
 ## Build System
 
 ### Makefile Features
-- Jo Engine integration via `Makefile.common`
-- Custom targets: `info`, `clean-all`, `test-mednafen`, `test-yabause`
-- Configuration: `JO_ENGINE_SRC_DIR`, `EXTRA_CFLAGS`
-- Outputs: `.cue`/`.bin` or `.iso` disc images
+- `make coup-saturn` — produces Saturn disc image via Docker
+- Outputs: `build/coup_game/game.cue` + `build/coup_game/track01.bin`
 
 ### Build Script Features
-- Auto-detect Jo Engine installation
-- Color-coded output (info/warn/error)
-- Emulator auto-detection and launch
-- Error handling and validation
-- Help text and usage examples
+- `scripts/docker-saturn-build.sh` builds a hermetic image on first use
+  (`scripts/saturn-build.Dockerfile`) bundling SGL + the SH-2 toolchain
+- `JOENGINE_LOCAL=/path/to/joengine` overrides with a local checkout
 
 **Platforms**: macOS, Linux (Windows with Bash/WSL)
 
@@ -461,25 +457,22 @@ void my_frame_callback(void) {
 
 For developers integrating this PAL:
 
-1. **Install Jo Engine**
-   - Download from https://jo-engine.org/
-   - Set `JO_ENGINE_SRC_DIR` environment variable
+1. **Install Docker** (only host requirement for the Saturn build).
 
-2. **Test Example**
+2. **Build & Run**
    ```bash
-   cd pal/saturn
-   make
-   mednafen -force_module ss cui_saturn.cue
+   make coup-saturn
+   mednafen -force_module ss build/coup_game/game.cue
    ```
 
 3. **Read Documentation**
-   - Start with QUICKSTART.md
-   - Reference README.md for details
-   - Check COMPATIBILITY.md for limitations
+   - Start with [quickstart.md](quickstart.md)
+   - Reference [README.md](README.md) for details
+   - Check [compatibility.md](compatibility.md) for limitations
 
 4. **Integrate into Project**
    - Copy `saturn_pal.{h,c}` to your project
-   - Adapt Makefile for your structure
+   - Adapt the Saturn makefile pattern at `examples/coup/saturn/Makefile`
    - Follow pattern in example_main.c
 
 5. **Test with cui Components**

@@ -115,15 +115,11 @@ switch (action) {
 ## Build & Run
 
 ```bash
-# Install Jo Engine first
-# Download from https://jo-engine.org/
-
-# Build
-cd pal/saturn
-make
+# Build (Docker-hermetic; no host Saturn SDK required)
+make coup-saturn
 
 # Run in emulator
-mednafen -force_module ss cui_saturn.cue
+mednafen -force_module ss build/coup_game/game.cue
 ```
 
 ## Minimal Project Structure

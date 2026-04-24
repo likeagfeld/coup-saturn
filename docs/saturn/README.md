@@ -28,10 +28,11 @@ void cui_saturn_run(void);  /* never returns */
 ### Build
 
 ```bash
-./build storybook/saturn        # build storybook ROM
-./run storybook/saturn           # run in emulator
-./build tests/saturn             # build Saturn tests
+make coup-saturn                 # build Saturn disc image (game.cue / track01.bin)
 ```
+
+Requires Docker. The build runs in a hermetic image (see
+`scripts/saturn-build.Dockerfile`); no host Saturn SDK install needed.
 
 ### Key Constraints
 

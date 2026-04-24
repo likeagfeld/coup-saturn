@@ -61,9 +61,10 @@ make test-yabause  # Build and run in Yabause
 ```
 
 **Configuration**:
-- `JO_ENGINE_SRC_DIR` - Path to Jo Engine (default: `/opt/joengine`)
-- `EXTRA_CFLAGS` - Include paths for cui headers
-- `JO_COMPILE_USING_SGL=0` - Use Jo Engine renderer
+- Builds via Docker; SGL + SH-2 toolchain are baked into the image
+- `JOENGINE_LOCAL=/path` (optional) bind-mounts a local Jo Engine
+  checkout in place of the baked one — only needed when iterating on
+  the engine itself
 
 **Output**:
 - `cui_saturn.cue` + `cui_saturn.bin` - Disc image (CUE/BIN format)
@@ -203,22 +204,16 @@ mednafen -force_module ss game.cue
 
 **Usage**:
 ```bash
-# Build only
-./scripts/test-saturn.sh
+# Build (from project root)
+make coup-saturn
 
-# Build and run
-./scripts/test-saturn.sh --run
-
-# With custom Jo Engine path
-export JO_ENGINE_SRC_DIR=~/saturn/joengine
-./scripts/test-saturn.sh --run
+# With local Jo Engine checkout instead of the baked image
+JOENGINE_LOCAL=~/Projects/retro/saturn/engines/joengine make coup-saturn
 ```
 
 **Requirements**:
-- Bash shell
-- Jo Engine installed
-- SH-2 toolchain in PATH
-- Emulator installed (optional, for --run)
+- Docker
+- Emulator installed (optional, for running the disc image)
 
 ---
 
@@ -269,10 +264,9 @@ scripts/
 When integrating Saturn PAL into your project:
 
 - [ ] Copy `saturn_pal.h` and `saturn_pal.c` to project
-- [ ] Copy/adapt `Makefile` for your project structure
+- [ ] Copy/adapt `examples/coup/saturn/Makefile` for your project structure
 - [ ] Include cui core headers (`cui_pal.h`, `cui_types.h`)
-- [ ] Install Jo Engine (set `JO_ENGINE_SRC_DIR`)
-- [ ] Install SH-2 toolchain (or use Jo Engine's)
+- [ ] Install Docker (for the hermetic build), or supply your own SGL + SH-2 toolchain
 - [ ] Create `jo_main()` entry point
 - [ ] Call `jo_core_init()` first
 - [ ] Register platform: `cui_pal_register(cui_saturn_platform())`
