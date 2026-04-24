@@ -1,97 +1,73 @@
-# cui - C UI Component Library
+# Coup — Saturn + browser crossplay card game
 
-A platform-agnostic C component library for building UIs on retro/embedded platforms.
+2–6 player Coup. Sega Saturn clients connect via NetLink modem +
+DreamPi to a Python authoritative server; browser clients connect via
+WebSocket. Bots fill empty seats.
 
-## Quick Reference
-
-- **Build**: `./build.sh lib` - compile library
-- **Test**: `./build.sh tests` - run unit tests
-- **Storybook**: `./build.sh storybook && ./run.sh storybook` - launch component gallery
-
-## Agent System
-
-This project uses specialized agents for development. See `.claude/agents/` for individual agent definitions and `.claude/agents.yaml` for machine-readable configuration.
-
-### Component Workflow
+## Repo layout
 
 ```
-1. component-lead → proposal
-2. User approval
-3. design-agent → spec
-4. test-agent → tests FIRST (TDD)
-5. spec-agent → interface
-6. core-agent → implementation
-7. pal-*-agent → platform specifics
-8. storybook-agent → gallery entry
+coup-saturn/
+├── core/                       # cui core (static-allocation UI primitives)
+├── examples/coup/              # Shared game logic
+│   ├── coup_rules.c            #   authoritative rule engine
+│   ├── coup_bot.c              #   bot AI
+│   ├── coup_game.c             #   game state machine
+│   ├── coup_render.c           #   rendering (platform-agnostic)
+│   ├── coup_audio.c            #   audio
+│   └── saturn/                 #   Saturn entry point + Makefile
+│       ├── main_saturn.c
+│       └── Makefile
+├── pal/saturn/                 # Saturn PAL (bare SGL — no Jo Engine runtime)
+├── tools/coup_server/          # Python server: TCP :4821, WebSocket :4823
+├── web/                        # Browser client (HTML/JS, talks to WS port)
+├── scripts/                    # Build scripts (Docker Saturn build)
+├── docs/saturn/                # Saturn-specific docs
+└── Makefile                    # Top-level: coup-lib, coup-server, coup-saturn
 ```
 
-## Architecture
+## Build
 
-### Directory Structure
-
-```
-cui/
-├── build.sh / run.sh      # Unified build and run scripts
-├── core/include/           # Public headers
-├── core/src/               # Implementation
-├── pal/sdl/                # SDL platform
-├── pal/n64/                # N64 platform
-├── pal/saturn/             # Saturn platform
-├── storybook/              # Component gallery app
-│   ├── sdl/                # SDL entry point
-│   ├── saturn/             # Saturn entry point + Makefile
-│   └── n64/                # N64 entry point + Makefile
-├── tests/                  # Test suite
-│   ├── core/               # Platform-agnostic unit tests
-│   ├── sdl/                # SDL integration tests
-│   ├── saturn/             # Saturn-specific tests + ROM
-│   └── framework/          # Shared test infrastructure
-├── examples/saturn/        # Saturn example projects
-├── docs/                   # Documentation
-│   ├── saturn/             # Saturn platform docs
-│   ├── n64/                # N64 platform docs
-│   └── testing/            # Test harness docs
-├── components/             # Component designs and proposals
-└── scripts/                # Internal build scripts
+```bash
+./build.sh coup       # build everything (host coup-lib + python server + Saturn disc)
+make coup-saturn      # Saturn disc image only (Docker, hermetic)
+make coup-lib         # host shared lib (libcoup_rules.{so,dylib}) for server use
+make coup-server      # python server package
+make test-coup        # host-toolchain unit tests
 ```
 
-### Memory Model
+The Saturn build runs in a hermetic Docker image
+(`scripts/saturn-build.Dockerfile`); see [docs/saturn/](docs/saturn/)
+for what's actually pulled from joengine and why. The host portions
+(coup-lib, coup-server) need a host gcc and Python 3 with
+`websockets`.
 
-- **Static-first**: All components work with stack/static allocation
-- **No hidden malloc**: Caller provides all memory
-- **Fixed-size buffers**: Compile-time limits via defines
+## Architecture, briefly
 
-### Component Pattern
+- **Authoritative server** (`tools/coup_server/server.py`): owns game
+  state. Loads `libcoup_rules.so` (built from `examples/coup/coup_rules.c`)
+  so server and client run *identical* rule logic. Bots also live
+  here and use the same C bot via FFI.
+- **Saturn client** (`pal/saturn/` + `examples/coup/saturn/`): SGL
+  rendering, NetLink modem TCP transport via DreamPi, app-owned main
+  loop. Game logic shared with server via `examples/coup/`.
+- **Web client** (`web/`): WebSocket client to server. Currently
+  hardcodes `ws://${host}:4823`.
 
-```c
-// 1. Statically allocatable struct
-typedef struct cui_button {
-    char label[CUI_BUTTON_MAX_LABEL];
-    cui_rect_t bounds;
-    cui_state_t state;
-} cui_button_t;
+The Saturn PAL talks to **bare SGL only** — Jo Engine the engine is
+not linked. The joengine repo is just the bundle that ships SGL +
+SH-2 toolchain + IP.BIN.
 
-// 2. init() - initialize with caller memory
-void cui_button_init(cui_button_t* btn, const char* label, int x, int y);
+## Layer note (from workspace coordinator)
 
-// 3. render() - draw using theme
-void cui_button_render(const cui_button_t* btn, const cui_theme_t* theme);
+This repo sits at L3 (application) in the retro/ workspace's
+L1/L2/L3 layering. cui in `core/` is L2-ish but has been
+coup-specialized over time. Do not propose adding Saturn-specific
+code into cross-platform cui core — that's a layer violation.
 
-// 4. handle() - process input, return events
-cui_handle_result_t cui_button_handle(cui_button_t* btn, cui_input_action_t action, cui_event_t* out);
-```
+## Worker scope
 
-## Configuration
-
-```c
-#define CUI_MAX_LIST_ITEMS     64
-#define CUI_MAX_LABEL_LEN      32
-#define CUI_BUTTON_MAX_LABEL   32
-```
-
-## Platform Support
-
-- SDL (primary development)
-- Saturn (SGL-based, see `docs/saturn/`)
-- N64 (libdragon-based, see `docs/n64/`)
-- Wii U (planned)
+This is the `coup-saturn` repo, separate from `retro/saturn/games/coup/`
+(which is likeagfeld's `cui_sandbox` fork). Distinct from the workspace
+`coup-worker`'s scope; needs its own worker definition or coordinator
+direct-edits if/when active work resumes.

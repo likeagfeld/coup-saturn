@@ -1,45 +1,53 @@
-# Saturn Platform Documentation
+# Saturn Documentation
 
-Saturn platform implementation for the cui library.
+Saturn-specific docs for Coup. The Saturn frontend lives in
+[`pal/saturn/`](../../pal/saturn/) and [`examples/coup/saturn/`](../../examples/coup/saturn/);
+shared game logic is in `examples/coup/`.
 
-## Quick Navigation
+## Documents
 
 | Document | Purpose |
 |----------|---------|
-| [quickstart.md](quickstart.md) | 5-minute setup guide |
-| [architecture.md](architecture.md) | Technical deep dive into PAL implementation |
-| [architecture_plan.md](architecture_plan.md) | Strategic roadmap for Saturn capabilities |
-| [compatibility.md](compatibility.md) | Feature matrix and known limitations |
-| [implementation.md](implementation.md) | Implementation summary and scope |
-| [files.md](files.md) | File structure reference |
-| [example_main.c](example_main.c) | Working Saturn demo code |
-| [visual_safe_area.md](visual_safe_area.md) | Safe area visual test spec |
+| [quickstart.md](quickstart.md) | How the Saturn entry point is wired together |
+| [architecture.md](architecture.md) | Hardware notes: memory map, VDP1 budget, color, dual SH-2 |
+| [backup-ram.md](backup-ram.md) | BUP storage layout and API |
+| [visual_safe_area.md](visual_safe_area.md) | Safe-area test spec |
 
-## Quick Reference
-
-### API
-
-```c
-const cui_platform_t* cui_saturn_platform(void);
-void cui_saturn_set_frame_callback(cui_saturn_frame_callback_t callback);
-void cui_saturn_run(void);  /* never returns */
-```
-
-### Build
+## Build
 
 ```bash
-make coup-saturn                 # build Saturn disc image (game.cue / track01.bin)
+make coup-saturn          # build Saturn disc image (game.cue / track01.bin)
 ```
 
-Requires Docker. The build runs in a hermetic image (see
-`scripts/saturn-build.Dockerfile`); no host Saturn SDK install needed.
+Requires Docker. The build runs in a hermetic image
+(`scripts/saturn-build.Dockerfile`); no host Saturn SDK install is
+needed. `JOENGINE_LOCAL=/path/to/joengine` overrides the baked SGL +
+SH-2 toolchain with a local checkout when iterating on the engine
+itself.
 
-### Key Constraints
+## What the PAL provides
 
-- Resolution: 320x224 (40x28 character grid)
+The Saturn PAL talks to **bare SGL** — no Jo Engine runtime is linked.
+The joengine repo is used purely as a delivery vehicle for SGL, IP.BIN,
+the SH-2 toolchain, and the SGL linker script. See
+[architecture.md](architecture.md) for details.
+
+Public surface (`pal/saturn/saturn_pal.h`):
+
+```c
+void cui_saturn_init(void);                              /* call after slInitSystem/slInitSynch */
+void cui_saturn_set_resolution(cui_saturn_resolution_t); /* before init; default 320x224 */
+cui_input_action_t cui_saturn_poll_input(void);          /* edge-detected pad action */
+void cui_saturn_vdp1_flush_cmds(void);                   /* flush buffered VDP1 cmds after slSynch() */
+void cui_saturn_vdp1_activate(void);
+```
+
+The application owns the main loop — see
+[`examples/coup/saturn/main_saturn.c`](../../examples/coup/saturn/main_saturn.c).
+
+## Key constraints
+
+- Resolution: 320×224 default (352×224 / 640×224 also supported)
 - Color: RGB555 (15-bit, no alpha)
 - Static allocation only (no malloc)
-
-## Source Files
-
-Source code lives in [`pal/saturn/`](../../pal/saturn/).
+- VDP1 budget: ~1200–1300 quads/frame before dropping to 30Hz

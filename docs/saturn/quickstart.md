@@ -1,225 +1,89 @@
-# Saturn PAL Quick Start
+# Saturn Quick Start
 
-Minimal guide to get cui running on Sega Saturn.
+How the Saturn frontend is initialized. The canonical entry point is
+[`examples/coup/saturn/main_saturn.c`](../../examples/coup/saturn/main_saturn.c);
+this doc summarizes what it does and why.
 
-## 30-Second Setup
-
-```c
-#include <jo/jo.h>
-#include "saturn_pal.h"
-
-void my_frame(void) {
-    cui_input_action_t action = CUI_INPUT()->poll();
-    /* handle input, render UI */
-}
-
-void jo_main(void) {
-    jo_core_init(JO_COLOR_Black);
-    cui_pal_register(cui_saturn_platform());
-    cui_pal_init();
-
-    /* init your cui components here */
-
-    cui_saturn_set_frame_callback(my_frame);
-    cui_saturn_run();  /* never returns */
-}
-```
-
-## Key Differences from PC
-
-| Feature | PC (SDL) | Saturn |
-|---------|----------|--------|
-| Main loop | `while(running)` | Callback @ 60Hz |
-| Exit | `return 0;` | Can't exit |
-| Colors | 32-bit RGBA | 15-bit RGB |
-| Text color | Any color | White only |
-| Display | Variable | Fixed 40x28 |
-
-## Common Mistakes
-
-### 1. Forgot to call jo_core_init
-
-```c
-/* WRONG */
-void jo_main(void) {
-    cui_pal_init();  /* Will fail! */
-    // ...
-}
-
-/* CORRECT */
-void jo_main(void) {
-    jo_core_init(JO_COLOR_Black);  /* First! */
-    cui_pal_init();
-}
-```
-
-### 2. Using poll loop instead of callback
-
-```c
-/* WRONG - won't work on Saturn */
-void jo_main(void) {
-    jo_core_init(JO_COLOR_Black);
-    while (1) {  /* Saturn uses callbacks, not loops */
-        cui_input_action_t action = poll();
-        render();
-    }
-}
-
-/* CORRECT - use callback */
-void my_frame(void) {
-    cui_input_action_t action = CUI_INPUT()->poll();
-    render();
-}
-
-void jo_main(void) {
-    jo_core_init(JO_COLOR_Black);
-    cui_saturn_set_frame_callback(my_frame);
-    cui_saturn_run();
-}
-```
-
-### 3. Expecting color in text
-
-```c
-/* This draws WHITE text, color is ignored */
-CUI_DISPLAY()->draw_text(0, 0, "Hello", CUI_RGB(255, 0, 0));
-```
-
-### 4. Too many rectangles
-
-```c
-/* SLOW - draws 1000 quads per frame */
-for (int i = 0; i < 1000; i++) {
-    draw_rect(i * 2, 0, 1, 1, color);
-}
-```
-
-## Input Cheat Sheet
-
-```c
-cui_input_action_t action = CUI_INPUT()->poll();
-
-switch (action) {
-    case CUI_INPUT_UP:        /* D-Pad Up */
-    case CUI_INPUT_DOWN:      /* D-Pad Down */
-    case CUI_INPUT_LEFT:      /* D-Pad Left */
-    case CUI_INPUT_RIGHT:     /* D-Pad Right */
-    case CUI_INPUT_CONFIRM:   /* A button */
-    case CUI_INPUT_CANCEL:    /* B button */
-    case CUI_INPUT_PAGE_UP:   /* L shoulder */
-    case CUI_INPUT_PAGE_DOWN: /* R shoulder */
-    case CUI_INPUT_QUIT:      /* Start (won't exit) */
-}
-```
-
-## Build & Run
+## Build & run
 
 ```bash
-# Build (Docker-hermetic; no host Saturn SDK required)
+# Build the Saturn disc image (Docker-hermetic; no host SDK required)
 make coup-saturn
 
-# Run in emulator
+# Run in Mednafen (Saturn module)
 mednafen -force_module ss build/coup_game/game.cue
 ```
 
-## Minimal Project Structure
+Outputs land in `build/coup_game/`: `game.cue`, `track01.bin`, plus
+`rebellion.wav` if `ffmpeg` is on PATH.
 
-```
-my_project/
-├── src/
-│   └── main.c           # Your jo_main()
-├── pal/
-│   └── saturn/
-│       ├── saturn_pal.c
-│       └── saturn_pal.h
-├── core/
-│   └── include/
-│       ├── cui_pal.h
-│       └── cui_types.h
-└── Makefile
-```
-
-## Display Dimensions
-
-- **Pixels**: 320 x 224
-- **Characters**: 40 x 28 (8x8 font)
-- **Refresh**: 60 Hz
-
-## Color Palette
-
-cui provides default colors (Catppuccin theme):
+## Initialization sequence
 
 ```c
-CUI_COLOR_BG          /* Dark background */
-CUI_COLOR_TEXT        /* Light text */
-CUI_COLOR_HIGHLIGHT   /* Blue */
-CUI_COLOR_ACCENT      /* Pink */
-CUI_COLOR_SUCCESS     /* Green */
-CUI_COLOR_WARNING     /* Yellow */
-CUI_COLOR_ERROR       /* Red */
+#include "saturn_pal.h"
+#include "../../pal/saturn/sgl_defs.h"   /* SGL declarations */
+
+void main(void)
+{
+    /* 1. SGL up first — required before any sl* / VDP calls */
+    slInitSystem(TV_320x224, (TEXTURE*)0, 1);
+    slInitSynch();
+
+    /* 2. Configure VDP2 background, enable display */
+    slTVOff();
+    slBack1ColSet((void*)(VDP2_VRAM_A1 + 0x1fffe), 0x0000);
+    slScrAutoDisp(NBG0ON);
+    slTVOn();
+
+    /* 3. Bring up the cui Saturn PAL (registers platform, layout, color mapper) */
+    cui_saturn_init();
+
+    /* 4. Application init: load assets, init game state, etc. */
+    coup_init();
+
+    /* 5. App-owned main loop */
+    while (1) {
+        cui_input_action_t action = cui_saturn_poll_input();
+        coup_update(action);
+        coup_render();          /* buffers VDP1 commands in RAM */
+        slSynch();              /* SGL waits for VBLANK */
+        cui_saturn_vdp1_flush_cmds();  /* push buffered cmds to VDP1 VRAM */
+    }
+}
 ```
 
-**Note**: Converted to 15-bit on Saturn (slight color loss).
+The non-obvious step is **#5's flush ordering**: `slSynch()` overwrites
+VDP1 VRAM offset `0x40` with its own END command, so the PAL buffers
+draw commands in RAM during `coup_render()` and flushes them to VRAM
+after `slSynch()` returns. See the comment block at the top of
+`main_saturn.c` for the long version.
 
-## Performance Tips
+## Input
 
-1. **Limit draw calls per frame** (<100 rectangles)
-2. **Update text only when changed** (not every frame)
-3. **Use static allocation** (no malloc)
-4. **Keep component count reasonable** (<50 UI elements)
+`cui_saturn_poll_input()` returns one edge-detected `cui_input_action_t`
+per frame:
 
-## Debugging
+| Action | Saturn button |
+|---|---|
+| `CUI_INPUT_UP / DOWN / LEFT / RIGHT` | D-Pad |
+| `CUI_INPUT_CONFIRM` | A |
+| `CUI_INPUT_CANCEL` | B |
+| `CUI_INPUT_PAGE_UP / PAGE_DOWN` | L / R |
+| `CUI_INPUT_QUIT` | Start |
 
-### Black Screen
+For raw pad reads (e.g. soft-reset combos), the SMPC peripheral block
+is at `Smpc_Peripheral[0].data`, with connection state in
+`Per_Connect1` — see the `A+B+C+START` reset handling in
+`main_saturn.c`.
 
-1. Check `jo_core_init()` called first
-2. Verify frame callback is set
-3. Ensure emulator uses SS module: `mednafen -force_module ss`
+## Performance budget @ 60 Hz
 
-### Input Not Working
+| Cost | Approx |
+|---|---|
+| VDP1 rasterization | ~8 ms |
+| VDP2 background | ~2 ms |
+| App / SH-2 | ~5 ms |
+| Headroom | ~1.7 ms |
 
-1. Test with example_main.c
-2. Check controller in emulator settings
-3. Verify using `jo_is_pad1_key_down()` not `pressed()`
-
-### Slow Rendering
-
-1. Count rectangles per frame (use `jo_printf` to show count)
-2. Reduce draw calls
-3. Pre-create sprites for repeated elements
-
-## Example Output
-
-Running example_main.c should show:
-
-```
-cui Saturn PAL Demo
-====================
-
-Frame: 1234
-Display: 40x28 chars
-Last Input: A
-
-Rectangle Test:
-[RED] [GREEN] [BLUE]
-
-Controls:
-  D-Pad: Navigation
-  A: Confirm
-  B: Cancel
-  L/R: Page Up/Down
-  Start: Quit
-```
-
-## Need Help?
-
-- **README.md** - Full documentation
-- **ARCHITECTURE.md** - Technical deep dive
-- **example_main.c** - Working example
-- **Jo Engine Docs** - https://jo-engine.org/doxygen/
-
-## Resources
-
-- [Jo Engine](https://jo-engine.org/)
-- [Saturn Emulator (Mednafen)](https://mednafen.github.io/)
-- [Saturn Hardware](https://www.copetti.org/writings/consoles/sega-saturn/)
+Hard ceiling: ~1200–1300 VDP1 quads per frame. Past that, frame rate
+drops to 30 Hz. Use VDP2 for solid-color backgrounds (free vs a quad).
