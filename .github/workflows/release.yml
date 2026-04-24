@@ -1,0 +1,82 @@
+name: Build & release Saturn disc
+
+# Tag pushes (v*) build, package, and attach artifacts to a release —
+# creating the release if one does not exist yet. Manual runs build
+# and upload the package as a workflow artifact for testing without
+# cutting a release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create / upload to releases
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg (for rebellion.wav)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build saturn-build image (cached)
+        uses: docker/build-push-action@v5
+        with:
+          context: scripts
+          file: scripts/saturn-build.Dockerfile
+          tags: coup-saturn-build:latest
+          load: true                # keep the image in the local daemon
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Saturn disc image
+        run: make coup-saturn
+
+      - name: Package release zip
+        id: package
+        run: |
+          set -e
+          STAGE=$(mktemp -d)
+          # Match the existing v1.0-beta layout: COUP.cue + track01.bin + rebellion.wav.
+          cp build/coup_game/game.cue       "$STAGE/COUP.cue"
+          cp build/coup_game/track01.bin    "$STAGE/track01.bin"
+          if [ -f build/coup_game/rebellion.wav ]; then
+            cp build/coup_game/rebellion.wav "$STAGE/rebellion.wav"
+          fi
+          # Tag-driven runs name the zip after the tag; manual runs use the SHA.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            NAME="coup-saturn-${GITHUB_REF_NAME}"
+          else
+            NAME="coup-saturn-${GITHUB_SHA::7}"
+          fi
+          (cd "$STAGE" && zip -r "$RUNNER_TEMP/${NAME}.zip" .)
+          echo "zip_path=$RUNNER_TEMP/${NAME}.zip" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${NAME}.zip"              >> "$GITHUB_OUTPUT"
+
+      # Manual runs: surface the build as a workflow artifact for inspection.
+      - name: Upload as workflow artifact (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: ${{ steps.package.outputs.zip_path }}
+
+      # Tag runs: attach to a release, creating it if missing.
+      - name: Attach to GitHub release (tag runs)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${GITHUB_REF_NAME}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "Automated build from $TAG. See README for setup."
+          fi
+          gh release upload "$TAG" "${{ steps.package.outputs.zip_path }}" --clobber
