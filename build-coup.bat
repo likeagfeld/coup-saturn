@@ -23,7 +23,7 @@ if exist "C:\Program Files\Git\bin\bash.exe" (
 )
 
 echo Building Coup via Git Bash...
-"%GITBASH%" -l -c "cd '%~dp0' && MSYS_NO_PATHCONV=1 ./build.sh coup"
+"%GITBASH%" -l -c "cd '%~dp0' && MSYS_NO_PATHCONV=1 make coup-all"
 
 if %errorlevel% neq 0 (
     echo.
