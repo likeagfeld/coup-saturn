@@ -21,7 +21,7 @@ Targets:
   coup            Launch build/coup_game/game.cue in Mednafen
   coup/saturn     Alias for "coup"
 
-Build first with: ./build.sh coup
+Build first with: make coup-saturn
 EOF
     exit 1
 }
@@ -29,7 +29,7 @@ EOF
 launch_coup() {
     local cue="build/coup_game/game.cue"
     if [ ! -f "$cue" ]; then
-        echo "run.sh: $cue not found. Build first: ./build.sh coup" >&2
+        echo "run.sh: $cue not found. Build first: make coup-saturn" >&2
         exit 1
     fi
     if ! command -v mednafen >/dev/null 2>&1; then

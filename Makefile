@@ -9,7 +9,7 @@
 #   clean         rm -rf build/
 #
 # Single source of truth for shared-library sources: COUP_LIB_SRCS below.
-# build.sh delegates to these targets; do not duplicate source lists elsewhere.
+# Do not duplicate source lists elsewhere.
 
 CC ?= gcc
 AR ?= ar

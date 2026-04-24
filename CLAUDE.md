@@ -29,10 +29,11 @@ coup-saturn/
 ## Build
 
 ```bash
-./build.sh coup       # build everything (host coup-lib + python server + Saturn disc)
+make coup-all         # build everything (host coup-lib + python server + Saturn disc)
 make coup-saturn      # Saturn disc image only (Docker, hermetic)
 make coup-lib         # host shared lib (libcoup_rules.{so,dylib}) for server use
 make coup-server      # python server package
+make serve            # run server + web client locally for browser play
 make test-coup        # host-toolchain unit tests
 ```
 

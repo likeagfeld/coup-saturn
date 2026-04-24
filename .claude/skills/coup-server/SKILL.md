@@ -13,7 +13,7 @@ Arguments: $ARGUMENTS (number of bots, default 5; optional `--auto-start` flag)
 ## Steps
 
 1. Kill any existing server/bot processes on port 4821
-2. Build the C rule engine: `./build.sh coup-lib`
+2. Build the C rule engine: `make coup-lib`
 3. Start the server: `python3 tools/coup_server/server.py --port 4821` (background)
 4. Wait for server to be listening
 5. If `--auto-start` was passed: start the first bot with `--auto-start <num_bots+1>`. Otherwise: start with `--auto-start 0` (disabled). Bot name: "SaturnBot". (background)
