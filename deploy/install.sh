@@ -9,7 +9,7 @@
 
 set -e
 
-REPO_URL="https://github.com/feldmanweb/coup-server.git"
+REPO_URL="https://github.com/likeagfeld/coup-saturn.git"
 REPO_BRANCH="main"
 INSTALL_DIR="/opt/coup-server"
 DOMAIN="saturncoup.duckdns.org"

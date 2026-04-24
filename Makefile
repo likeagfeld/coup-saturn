@@ -163,6 +163,13 @@ $(BUILD_DIR)/$(TESTS_FW)/%.o: $(TESTS_FW)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -I$(TESTS_FW) -I$(TESTS_FW)/mocks -c -o $@ $<
 
+# === Dev launcher ===
+# Runs game server (ws://:4823, tcp 4821) + static web server (:8000)
+# with labeled output. Ctrl-C stops both.
+.PHONY: serve
+serve:
+	@./scripts/dev.sh
+
 # === Clean ===
 .PHONY: clean
 clean:
@@ -177,6 +184,7 @@ help:
 	@echo "  make coup-lib    - Host build of libcoup_rules (dylib/so)"
 	@echo "  make coup-server - Dockerized gcc:14 build + Python server package"
 	@echo "  make coup-saturn - Dockerized Saturn disc image (game.cue/track01.bin)"
+	@echo "  make serve       - Run game server + web client locally (dev)"
 	@echo "  make test-coup   - Host-toolchain unit tests"
 	@echo "  make clean       - Remove build artifacts"
 	@echo "  make all         - Alias for coup-all"
