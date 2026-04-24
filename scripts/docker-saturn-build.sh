@@ -96,9 +96,9 @@ fi
 # set in the image ENV; makefiles can consume it as-is.
 MSYS_NO_PATHCONV=1 docker run --rm \
     --platform linux/amd64 \
-    -v "$DOCKER_PROJECT:/cui" \
+    -v "$DOCKER_PROJECT:/workspace" \
     "${LOCAL_JOENGINE_ARG[@]}" \
-    -w "/cui/$REL_BUILD_DIR" \
+    -w "/workspace/$REL_BUILD_DIR" \
     -e "SATURN_RES_DEFINE=$SATURN_RES_DEFINE" \
     "$IMAGE_TAG" \
     bash -c '

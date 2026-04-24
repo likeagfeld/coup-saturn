@@ -5,7 +5,8 @@
 # Compiles the C rule engine into a .so/.dylib placed next to this script
 # so the server can load it without needing the full project tree.
 #
-# Prefer: ./build coup/server (from project root) or ./run coup/server
+# Prefer: make coup-server (from project root) — this script is the
+# fallback used by deploy/install.sh on the production Debian server.
 #
 # Usage:
 #   ./build_lib.sh          Build the shared library
@@ -44,7 +45,7 @@ fi
 for src in "${SRCS[@]}"; do
     if [ ! -f "$src" ]; then
         echo "Error: source file not found: $src" >&2
-        echo "Run this from within the cui project tree." >&2
+        echo "Run this from within the coup-saturn project tree." >&2
         exit 1
     fi
 done

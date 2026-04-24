@@ -98,7 +98,7 @@ def _find_library_path():
 
     raise FileNotFoundError(
         f"Shared library '{lib_name}' not found. "
-        f"Build it with: ./build coup/server (from project root)"
+        f"Build it with: make coup-lib (from project root)"
     )
 
 
