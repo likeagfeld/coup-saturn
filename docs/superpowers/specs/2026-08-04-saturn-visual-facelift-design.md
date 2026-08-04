@@ -204,12 +204,27 @@ true-vblank fps) enforces this empirically rather than by arithmetic.
 - Card-face textures for flips: reuse existing 64×96 portraits + 48×72 back.
 - Freed: ~36 KB game-over strips.
 
-**WRAM / binary size** — the four backgrounds are 128 KB each; embedding all
-four as C arrays (+512 KB) will not fit WRAM-H alongside the ~700 KB music
-data. Phase 0 measures the real binary/WRAM map; the design assumes **CD file
-loading for scene bitmaps** (load-on-transition into a single 128 KB staging
-path, hidden under the fade) with only the game-table scene optionally
-resident. This is a measurement-gated decision, not an assumption.
+**WRAM / binary size — MEASURED 2026-08-04, superseding the original estimate.**
+Phase 0 ran the gate against the real linker map and the assumption behind this
+paragraph turned out to be false:
+
+| Measurement | Value |
+|---|---|
+| `.text` / `.data` / `.bss` | 81,248 / 28,496 / 87,520 bytes |
+| `_end` | `0x0607BA50` |
+| WRAM-H headroom below the stack (`0x060FFC00`) | **541,104 bytes** |
+| 128 KB backgrounds that fit embedded (64 KB reserve) | **3** |
+
+`examples/coup/saturn/coup_music_data.h` — 2.7 MB of ASCII hex — **is included
+by no translation unit.** It is an orphan file; the music plays from the CD-DA
+track. There is no ~700 KB of resident music, and therefore no forced CD
+streaming.
+
+Revised design: **embed the backgrounds.** One fits trivially (Phase 1a), and
+three of the four fit. Only the fourth needs another approach — a lower colour
+depth, a smaller bitmap, or streaming that one scene — decided when Phase 1b
+adds the remaining scenes. CD streaming is no longer a prerequisite for any of
+this work.
 
 ### 4.6 Known constraints designed around (from the doc sweep)
 

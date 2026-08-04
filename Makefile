@@ -192,3 +192,8 @@ help:
 	@echo ""
 	@echo "Options:"
 	@echo "  DEBUG=1          - Build with debug symbols"
+
+# === QA gates ===
+.PHONY: qa-binary
+qa-binary:
+	@python3 scripts/qa/qa_binary.py $(COUP_SATURN_DIR)/_build/game.map
