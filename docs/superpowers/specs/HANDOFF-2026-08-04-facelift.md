@@ -1,97 +1,138 @@
 # HANDOFF — Saturn Visual Facelift (2026-08-04)
 
-For the next session (any model). Branch: `claude/saturn-visual-facelift`
-(created from `main` @ a1f798d, repo `likeagfeld/coup-saturn` cloned at `W:\coupsaturn`).
+Branch: `claude/saturn-visual-facelift` (from `main` @ a1f798d).
+Repo `likeagfeld/coup-saturn`, working copy `W:\coupsaturn`.
 
-## Where this stands
+**State: Phases 0, 1a, 1b, 2 and the Phase 3 panel-lighting pass are DONE,
+committed and pushed. 266/266 host tests green. Binary gate green with
+~405 KB of WRAM-H headroom.**
 
-The user asked for a data-driven, no-guessing plan (sega-saturn-developer
-methodology + superpowers brainstorming + Claude Design) for a Saturn visual
-facelift on a new branch. **The design spec is written but NOT yet approved by
-the user. No implementation has started — the brainstorming HARD-GATE is
-active: do not write feature code until the user approves the spec.**
+---
 
-## Done
+## How to build and test on THIS machine
 
-1. **Methodology steps 1-4 complete**: doc index read; VDP1 + VDP2 full
-   citation sweeps done by subagents; entire Saturn rendering path of the repo
-   inspected (`saturn_pal.c`, `saturn_vdp1.{c,h}`, `saturn_vdp2.{c,h}`,
-   `coup_render.c`, loaders, `main_saturn.c`).
-2. **Design spec**: `docs/superpowers/specs/2026-08-04-saturn-visual-facelift-design.md`
-   — 3 approaches (A polish / B dual-VDP RECOMMENDED / C Mode-7 deferred),
-   per-screen design, VRAM/CRAM/cycle budgets, 8 RED-firing gates (G1-G8),
-   6 phases, risks.
-3. **Hardware findings preserved**: `docs/saturn/facelift-hw-reference.md`
-   (condensed from the two sweep reports — encodings, SGL calls, constraints,
-   gotchas — sufficient to implement without re-running the sweeps).
-4. **Art direction settled by data**: the four shipped PNGs
-   (`examples/coup/assets/{CoupTitleScreen,gamescreen,Waiting_Room2,winscreen}.png`)
-   already define a "Royal Court" language (gold filigree / midnight damask /
-   leather / candle glow). The facelift adopts it; Catppuccin chrome colors are
-   replaced (status colors retained). NOTE: Waiting_Room2.png has P1-P8 slot
-   frames and button plates PAINTED INTO the art — the CUI layout must be
-   calibrated to those regions (added to plan Phase 1).
-5. **Claude Design mockups** (5 of 7 cards) in `docs/design/`:
-   `foundations/palette.html`, `foundations/layer-stack.html`,
-   `components/panels.html`, `screens/title.html`, `screens/game-table.html`.
-   Each has the `<!-- @dsCard group="..." -->` first-line marker.
+There is no `make` and no host C compiler here — only Docker and Python.
 
-## Done (continued — Opus 5 session)
+```powershell
+# Host unit tests (run from PowerShell, NOT Git Bash: MSYS mangles -w /src)
+docker run --rm -v "W:\coupsaturn:/src" -w /src gcc:14 make test-coup
 
-6. **Motion cards written**: `docs/design/motion/card-flip.html` (12-frame
-   trapezoid storyboard with vertex math) and `motion/transitions.html`
-   (colour-offset ramps, flash, mesh limitation stated honestly).
-7. **All 7 cards synced to Claude Design** — project "Design System"
-   `019e1bff-8c1b-7eda-aaa6-3cc368c89e78`, planId
-   `plan_019e1bff8c1b7eda_0f0c504db51f`, localDir `docs/design`. Re-sync with a
-   fresh `finalize_plan` using the same globs.
-8. **Spec self-review found and fixed three hardware contradictions** — this was
-   the substantive work of the session, not a formality:
-   - **Gouraud/half-lum/half-trans need an RGB-code source**; every game sprite
-     is colour-bank-16, so *no sprite could have been lit as designed*. Fix:
-     Phase 3 migrates lit sprites to colour mode 1 (16-colour LUT, RGB entries,
-     32 B each); frees CRAM banks 16-24. Now spec §4.6 item 7.
-   - **Shadow/half-trans read the framebuffer**, so a shadow cast onto the VDP2
-     background is a no-op and a glow over it turns opaque. Fix: opaque shadow
-     plates + gouraud halos. Spec §4.6 item 8.
-   - **Sprite-screen colour calc is global** (RGB sprites all use priority/CC
-     register 0) — no per-seat translucency exists. Spec §4.6 item 9.
-   - Added **gate G9 (effect-efficacy)**: every effect must measurably change
-     pixels vs an effect-disabled capture. This is the gate that catches the
-     "compiles, runs, looks identical" class the three bugs above belong to.
-   - Added Phase 1 **layout calibration** to the painted UI regions in
-     `Waiting_Room2.png` / `gamescreen.png`.
-   - §4.4 fill budget recomputed: now ≤120 k px-clocks (~25%), *below* the
-     current build.
-9. **Server compatibility verified and documented** (new spec §8, answering the
-   user's turnkey question): protocol/rules/server files are structurally
-   untouched. Only coupling is frame rate — client timers are frame-counted,
-   server's are wall-clock. Measured floors: heartbeat ≥10 fps (600 frames vs
-   `HEARTBEAT_TIMEOUT=60.0`), challenge/block ≥50 fps (client 10 s vs server
-   12.0 s), influence/exchange ≥30 fps. Added **gate G10** (≥55 fps worst-case
-   frame + network poll must survive transitions). Verdict: turnkey, no server
-   change, no protocol bump.
+# Saturn disc. ALWAYS use pipefail - piping the script through `tail` alone
+# reports tail's exit code and a hard compile error looks like success.
+set -o pipefail
+./scripts/docker-saturn-build.sh "$(pwd)/examples/coup/saturn" "" 2>&1 | tail -3
+echo "EXIT=${PIPESTATUS[0]}"
 
-## Remaining
+# Gates
+python scripts/qa/qa_binary.py examples/coup/saturn/_build/game.map
+python scripts/qa/qa_capture.py build/coup_game/game.cue build/qa/out --seconds 20
+```
 
-1. **User approval of the spec** — still the open gate. Not yet given.
-2. After approval: invoke `superpowers:writing-plans` to produce the detailed
-   implementation plan from the spec, then implement phase-by-phase with the
-   gates. Every Saturn subagent dispatch MUST carry the sega-saturn-developer
-   skill-binding preamble verbatim (complete-doc-index.md read + RED-firing
-   gate rule — see skill §SUB-AGENT DISPATCH REQUIREMENT).
+Assembling a runnable disc needs `game.cue` + `track01.bin` + `rebellion.wav`
+together in `build/coup_game/` — the cue references the wav relatively.
 
-## Key session facts a fresh context needs
+---
 
-- Working dir `W:\coupsaturn` IS the clone (was empty, cloned in place).
-- Baseline numbers: VDP2 uses ~12 KB of 512 KB (NBG0 text only, B1); VDP1
-  textures ~155 KB of 444 KB; CRAM banks 32-63 free; every VDP1 command today
-  has grda=0. Full-screen bg is a 71,680 px VDP1 polygon — moving it to NBG1
-  refunds that fill budget.
-- The four scene PNGs are 1536×1024 sources → converter must produce 512×256
-  8bpp bitmaps (visible 320×224 window) + ONE shared 256-color palette
-  (CRAM banks 32-47).
-- WRAM cannot hold all four backgrounds embedded (+512 KB vs ~700 KB music
-  already embedded) → CD loading decision is measurement-gated in Phase 0 (G8).
-- Skills to invoke when resuming: `sega-saturn-developer` (mandatory),
-  then follow brainstorming flow from checklist item 7.
+## What shipped
+
+| Area | Result |
+|---|---|
+| Painted backdrop | `gamescreen.png` → 512×256 256-colour VDP2 bitmap on NBG1 in bank A0, shown on **every** screen via a single `screen_bg()` helper |
+| VDP1 load | Saturn game-screen fill **142,624 → 70,944 px**, exactly half. The facelift made the game *cheaper* to draw |
+| Portraits | Opaque brass-framed medallions, gouraud-lit |
+| Typography | Alagard 16×16 registered as a display face; brass-plated **PLAY** button |
+| Lighting | Gouraud gradients on panels — free, because gouraud is write-only |
+| Transitions | VDP2 colour-offset fade-in on every screen change |
+| Allocation | VDP1 texture offsets **and** CRAM banks now chain: fonts → sprites → game-over → animation |
+| Build | `-MMD -MP` header dependency tracking |
+
+Tests grew 248 → 266.
+
+---
+
+## Eight latent defects found — none visible to code inspection
+
+1. **`COL_TYPE_*` were wrong** in `sgl_defs.h`: `0,1,2,3,4` instead of SGL's
+   `0x00,0x10,0x20,0x30,0x40` (`SL_DEF.H:525-529`). Latent because the only
+   caller used `COL_TYPE_16 = 0`, correct by coincidence. Would have corrupted
+   any future non-16-colour layer.
+2. **CRAM collision**: `coup_anim_load()` claims banks 32-36 from `0x400` and
+   runs *after* `saturn_bg_init()`, silently overwriting 80 background colours.
+3. **`slScrAutoDisp` polarity**: returns `Bool` where `OK = 0`, `NG = -1`
+   (`SEGA_XPT.H:70-71`). The natural `== 0` failure test is inverted and would
+   have fallen back to text-only on every *successful* boot. It was declared
+   `void`, discarding the signal entirely. No SGL sample checks it.
+4. **Hardcoded VDP1 offsets** in two of three asset loaders, assuming exactly
+   one registered font. Adding a second garbled the title logo.
+5. **No header dependency tracking** — editing a `.h` left stale objects linked.
+6. **Missing `<stdint.h>`** in loader headers, relied on transitively.
+7. **Duplicated CRAM arithmetic** across loaders — same class as #2.
+8. **Over-saturated highlight palettes** in three animated portraits.
+
+---
+
+## Tooling findings (save the next session hours)
+
+- **RetroArch cannot see VDP1/VDP2 VRAM.** `READ_CORE_RAM` exposes only
+  `SYSTEM_RAM` (WRAM-L/H). VRAM, CRAM and registers need the **Mednafen
+  savestate** path.
+- **`mcs_extract`'s VDP1 VRAM dump is byte-pair-swapped.** Read raw, every
+  command looks like garbage (`ctrl=0x0400` rather than `0x0004`). Un-swap
+  before parsing. `--peek16` already compensates; the region dump does not.
+- Savestate capture works via
+  `D:\sonicmaniasaturn\tools\qa_savestate.ps1`, but it resolves the cue
+  relative to its own repo root and uses its own `MEDNAFEN_HOME`. Stage a
+  disc under `D:\sonicmaniasaturn\_coupqa\` with a **single-track cue** to
+  avoid copying the 70 MB audio track.
+- `CUI_TEST_BEGIN` / `CUI_TEST_END` **do not compile** — the macro substitutes
+  its parameter into `cui_current_test.name`. Use bare `CUI_TEST(name) { }`.
+- Mednafen records into a fixed 704×480 canvas; `qa_capture.py` normalises
+  back to 320×224 so gate coordinates equal game coordinates.
+
+---
+
+## Known open item: the yellow band
+
+Reported as "a random yellow band horizontally in the middle of the character
+sprite windows". **It is pre-existing** — 189 such pixels in the pre-facelift
+capture, invisible against the old black backdrop.
+
+Precisely fingerprinted, so pick it up from here rather than re-deriving:
+
+- Colour is exactly `(248,248,0)` = RGB555 `0x03FF` = **CRAM bank 2**
+  (`SATURN_PAL_SELECTED`), i.e. the *text* palette — not a portrait palette,
+  not a polygon, not the background.
+- Confined to **y 129-136**, one 8-pixel text row (grid row 16), spanning
+  x 16-300.
+- Ruled out by measurement: no animation frame has a bright row (all 120
+  scanned); all nine polygons have correct geometry and colour; the background
+  art has no gold rule there; the title layout draws no text at that row
+  (`portrait_y=68`, `menu_y=172`, `hint_row=26`); and
+  `saturn_rgba_to_palette_slot()` never returns slot 2.
+- Something draws a 4bpp part with `CMDCOLR = 2 << 4`. Next step: dump the
+  VDP1 command list from a savestate and list every **sprite** command's
+  `colr` (the earlier dump only decoded polygons).
+
+Toning three over-saturated highlight palettes dropped the saturated count
+509 → 281; the remainder is this band.
+
+---
+
+## Not done / next
+
+1. **Card-flip animation** (spec Phase 4). Design and 12-frame storyboard with
+   vertex maths already exist in `docs/design/motion/card-flip.html`.
+   Needs the sprite **LUT migration** first if the flip is to be gouraud-lit —
+   see spec §4.6 item 7. An unlit flip needs no migration.
+2. **Lobby art.** `Waiting_Room2.png` paints P1-P8 slots but
+   `COUP_MAX_PLAYERS = 7`, so it is wrong as-is. Recomposite with PIL to the
+   real seat count, then calibrate the CUI layout to the painted regions.
+3. **Sprite LUT migration** (spec §4.6 item 7) — unlocks lighting on portraits
+   and cards.
+4. **Generated art.** The user intends to wire up an external image model
+   (Kimi K3) via API for new illustrated content. Everything shipped so far is
+   procedural (PIL composites, computed gradients, palette edits) or existing
+   assets. Genuinely new illustration is the one gap that needs it.
+
+Every Saturn sub-agent dispatch must carry the `sega-saturn-developer` binding
+preamble verbatim (`complete-doc-index.md` + RED-firing gate).
