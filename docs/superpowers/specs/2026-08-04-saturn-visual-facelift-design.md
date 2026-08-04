@@ -186,14 +186,29 @@ true-vblank fps) enforces this empirically rather than by arithmetic.
   NG or the plane-visible gate fires (SGL auto-arbiter B1 drop gotcha,
   skill gotcha #7 / SGLFAQ §2-8).
 
-**CRAM (stay mode 0 for v1)**
-- Banks 0-15 text (unchanged), 16-24 sprites (unchanged).
-- Banks 25-31 freed by retiring game-over strips.
-- Banks 32-47: background palette (256 colors) — one shared, quantized across
-  all four scene bitmaps so scene swaps don't touch CRAM mid-display.
-  (If per-scene palettes prove necessary, switch to CRAM mode 1 / 2048 colors
-  via `slColRAMMode(CRM16_2048)` — a one-line, gate-verified change; costs the
-  blur function we don't use.)
+**CRAM — MEASURED map, correcting the original estimate.** The first draft of
+this section said "banks 32-47 free" for the background palette. That was
+wrong: it accounted for the sprite and game-over loaders but missed
+`coup_anim_loader.c`, which claims banks 32-36 and runs *after* the background
+is uploaded, silently overwriting its first 80 colours. The real map is:
+
+| CRAM bytes | 16-col banks | Owner |
+|---|---|---|
+| 0x000-0x1FF | 0-15 | text palettes (`saturn_pal.c`) |
+| 0x200-0x31F | 16-24 | sprite palettes (`coup_sprite_loader.c`) |
+| 0x3E0-0x3FF | 25-31 | game-over strips (`coup_gameover_loader.c`) |
+| 0x400-0x49F | 32-36 | animated portraits (`coup_anim_loader.c`) |
+| **0x600-0x7FF** | **48-63** | **background palette (256-colour bank 3)** |
+
+A 256-colour bitmap palette must start on a 256-colour boundary, so the only
+legal homes are 0x000, 0x200, 0x400 and 0x600. The first three are all taken,
+which makes bank 3 the only available slot — not a preference but a constraint.
+Any future 256-colour layer will have to share it or reclaim banks 25-31 by
+retiring the game-over strips.
+
+CRAM stays in its current mode for v1. If per-scene palettes ever exceed one
+bank, `slColRAMMode(CRM16_2048)` is the escape hatch; it costs the blur
+function, which this design does not use.
 
 **VDP1 VRAM**
 - Gouraud table pool: 64 static tables (512 B) + 16 double-buffered animated

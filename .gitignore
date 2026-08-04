@@ -79,3 +79,6 @@ __pycache__/
 
 # Local settings
 .claude/settings.local.json
+
+# Dependency files from -MMD
+*.d

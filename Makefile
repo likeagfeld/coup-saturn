@@ -24,6 +24,10 @@ TESTS_FW := tests/framework
 # Compiler flags
 CFLAGS := -Wall -Wextra -Werror -std=c99 -pedantic
 CFLAGS += -I$(CORE_INC)
+# Emit .d files so a header edit rebuilds its dependents. Without this, editing
+# a .h leaves stale objects linked in and tests fail against code that is no
+# longer on disk - which is confusing enough to cost a debugging cycle.
+CFLAGS += -MMD -MP
 
 # Debug/Release
 ifdef DEBUG
@@ -198,6 +202,10 @@ help:
 	@echo ""
 	@echo "Options:"
 	@echo "  DEBUG=1          - Build with debug symbols"
+
+# Header dependencies emitted by -MMD. Must come after the object lists.
+-include $(COUP_TEST_OBJS:.o=.d)
+-include $(COUP_LIB_OBJS:.o=.d)
 
 # === QA gates ===
 .PHONY: qa-binary
