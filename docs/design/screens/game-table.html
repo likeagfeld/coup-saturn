@@ -1,0 +1,86 @@
+<!-- @dsCard group="Screens" name="Game table — before / after" subtitle="Damask felt, lit seats, gold-framed cards, gradient timer" -->
+<style>
+  .gt-root { font-family: ui-monospace, Consolas, monospace; background:#0c0c14; color:#e8d8b0; padding:24px; }
+  .gt-root h1 { font-size:18px; margin:0 0 4px; color:#ffde4a; letter-spacing:1px; }
+  .gt-root p.lead { font-size:12px; color:#9a8f78; margin:0 0 18px; max-width:660px; line-height:1.5; }
+  .frames { display:flex; gap:24px; flex-wrap:wrap; }
+  .frame { width:480px; }
+  .frame .tag { font-size:11px; letter-spacing:2px; margin-bottom:6px; }
+  .screen { width:480px; height:336px; position:relative; overflow:hidden; border:1px solid #2a2a38; image-rendering:pixelated; }
+  .cap { font-size:11px; color:#8a8fa0; line-height:1.6; margin-top:8px; width:480px; }
+  .cap code { color:#8cb5ff; }
+  /* BEFORE */
+  .b-scr { background:#181825; font-size:10px; }
+  .b-seat { position:absolute; width:104px; height:44px; background:#313142; color:#fff; padding:4px 6px; }
+  .b-seat i { display:block; font-style:normal; color:#ffde4a; }
+  .b-log { position:absolute; top:110px; left:120px; width:240px; height:80px; background:#20202e; color:#6c7086; padding:6px; }
+  .b-hand { position:absolute; bottom:8px; left:8px; right:8px; height:70px; background:#313142; }
+  .b-card { position:absolute; bottom:12px; width:32px; height:48px; background:#7a3b52; }
+  .b-timer { position:absolute; top:96px; left:120px; width:240px; height:8px; background:#20202e; }
+  .b-timer i { display:block; height:100%; width:60%; background:#a5e7a5; }
+  /* AFTER */
+  .a-scr { background:radial-gradient(ellipse at 50% 18%, #262658 0%, #14143a 45%, #0a0a24 80%, #060618 100%); font-size:10px; }
+  .a-scr::before { content:""; position:absolute; inset:0;
+     background:repeating-conic-gradient(rgba(140,150,255,.03) 0 25%, transparent 0 50%) 0 0/26px 26px; }
+  .a-frame { position:absolute; inset:6px; border:1px solid #7b5a21; pointer-events:none; }
+  .a-frame::after { content:""; position:absolute; inset:3px; border:1px solid rgba(206,148,49,.35); }
+  .a-seat { position:absolute; width:104px; height:44px; color:#efdeb5; padding:4px 6px;
+            background:linear-gradient(160deg,#252550 0%, #16163a 60%, #0b0b26 100%);
+            border:1px solid; border-image:linear-gradient(180deg,#ce9431,#7b5a21) 1;
+            box-shadow:5px 5px 0 rgba(0,0,0,.5); }
+  .a-seat i { display:block; font-style:normal; color:#ffde4a; }
+  .a-seat.turn { box-shadow:0 0 14px 3px rgba(255,165,49,.55), 5px 5px 0 rgba(0,0,0,.5); border-image:linear-gradient(180deg,#ffde4a,#ce9431) 1; }
+  .a-seat.dead { filter:brightness(.45); }
+  .a-log { position:absolute; top:110px; left:120px; width:240px; height:80px; padding:6px; color:#b8ab8a;
+           background:linear-gradient(180deg, rgba(20,20,48,.92), rgba(10,10,30,.92));
+           border:1px solid #4a3a1a; }
+  .a-hand { position:absolute; bottom:8px; left:8px; right:8px; height:70px;
+            background:linear-gradient(170deg,#2b2b5c 0%, #17173c 55%, #0c0c28 100%);
+            border-top:2px solid; border-image:linear-gradient(90deg,#7b5a21,#ffde4a,#7b5a21) 1; }
+  .a-card { position:absolute; bottom:12px; width:32px; height:48px; border:1px solid #ce9431;
+            background:linear-gradient(160deg,#8a2a3e,#4a1424); box-shadow:3px 3px 0 rgba(0,0,0,.5); }
+  .a-timer { position:absolute; top:96px; left:120px; width:240px; height:8px; background:#080821; border:1px solid #4a3a1a; }
+  .a-timer i { display:block; height:100%; width:60%; background:linear-gradient(90deg,#a5e7a5,#ffde4a 75%,#ffa531); }
+</style>
+<div class="gt-root">
+  <h1>Game Table — Before / After</h1>
+  <p class="lead">The shipped damask-felt table art (gamescreen.png) becomes the NBG1 background;
+  seats become gouraud panels with drop shadows; the active seat gets the candle-amber glow;
+  cards get gold frames + shadows and flip on reveal.</p>
+  <div class="frames">
+    <div class="frame">
+      <div class="tag" style="color:#f78cad">BEFORE — current build</div>
+      <div class="screen b-scr">
+        <div class="b-seat" style="top:8px;left:8px"><i>ALICE $7</i>[##][##]</div>
+        <div class="b-seat" style="top:8px;right:8px"><i>BOB $2</i>[##][##]</div>
+        <div class="b-seat" style="top:58px;left:8px"><i>CARA $4</i>[##][##]</div>
+        <div class="b-seat" style="top:58px;right:8px;color:#6c7086"><i style="color:#6c7086">DAN</i>DEAD</div>
+        <div class="b-timer"><i></i></div>
+        <div class="b-log">&gt; Alice takes Income<br>&gt; Bob claims Duke<br>&gt; Challenge window...</div>
+        <div class="b-hand"></div>
+        <div class="b-card" style="left:20px;background:#7a3b52"></div>
+        <div class="b-card" style="left:60px;background:#3b5a7a"></div>
+      </div>
+      <div class="cap">Flat gray seats, flat log, flat cards on a flat dark screen.</div>
+    </div>
+    <div class="frame">
+      <div class="tag" style="color:#a5e7a5">AFTER — facelift</div>
+      <div class="screen a-scr">
+        <div class="a-frame"></div>
+        <div class="a-seat" style="top:10px;left:10px"><i>ALICE $7</i>[##][##]</div>
+        <div class="a-seat turn" style="top:10px;right:10px"><i>BOB $2</i>[##][##]</div>
+        <div class="a-seat" style="top:60px;left:10px"><i>CARA $4</i>[##][##]</div>
+        <div class="a-seat dead" style="top:60px;right:10px"><i>DAN</i>DEAD</div>
+        <div class="a-timer"><i></i></div>
+        <div class="a-log">&gt; Alice takes Income<br>&gt; Bob claims Duke<br>&gt; Challenge window...</div>
+        <div class="a-hand"></div>
+        <div class="a-card" style="left:22px"></div>
+        <div class="a-card" style="left:62px;background:linear-gradient(160deg,#2a4a7a,#122438)"></div>
+      </div>
+      <div class="cap">Felt + filigree on <code>NBG1</code>; seats = gouraud panels + shadow-mode
+      drop shadows; active seat = half-trans amber glow (6× budgeted); dead seat = half-luminance;
+      timer = animated gouraud green→amber; cards = gold polyline frames, distorted-sprite flip on
+      reveal; log tinted by the line-color gradient.</div>
+    </div>
+  </div>
+</div>

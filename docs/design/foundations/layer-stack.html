@@ -1,0 +1,55 @@
+<!-- @dsCard group="Architecture" name="Display layer stack" subtitle="VDP2 + VDP1 priorities after the facelift" -->
+<style>
+  .ls-root { font-family: ui-monospace, Consolas, monospace; background:#0c0c14; color:#e8d8b0; padding:24px; }
+  .ls-root h1 { font-size:18px; margin:0 0 4px; color:#ffde4a; letter-spacing:1px; }
+  .ls-root p.lead { font-size:12px; color:#9a8f78; margin:0 0 20px; max-width:660px; line-height:1.5; }
+  .layer { display:flex; align-items:center; gap:14px; margin:10px 0; }
+  .layer .prio { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+                 font-weight:bold; font-size:14px; background:#1a1a2e; border:2px solid #ce9431; color:#ffde4a; flex:none; }
+  .layer .card { flex:1; border-radius:6px; padding:10px 14px; border:1px solid #2a2a38; }
+  .layer .card b { display:block; font-size:13px; color:#fff; }
+  .layer .card span { font-size:11px; color:#b0a890; line-height:1.5; }
+  .layer .card code { font-size:11px; color:#8cb5ff; }
+  .arrow { text-align:center; color:#5a5a6a; font-size:11px; margin:2px 0 2px 48px; }
+  .note { margin-top:18px; font-size:11px; color:#9a8f78; line-height:1.6; max-width:660px; }
+  .note code { color:#ffde4a; }
+</style>
+<div class="ls-root">
+  <h1>Layer Stack (320×224, all screens)</h1>
+  <p class="lead">Front-to-back composition after the facelift. Today only priorities 5 (text)
+  and 4 (all VDP1) exist over a black backdrop; the facelift arms the idle VDP2 layers.</p>
+
+  <div class="layer"><div class="prio">7</div>
+    <div class="card" style="background:linear-gradient(90deg,#14141e,#1a1a2e)">
+      <b>NBG0 — UI text</b>
+      <span>16-color 8×8 grid, unchanged pipeline, moved 5→7. </span><code>slPriority(scnNBG0, 7)</code>
+    </div></div>
+  <div class="arrow">▼ text always wins</div>
+  <div class="layer"><div class="prio">6</div>
+    <div class="card" style="background:linear-gradient(90deg,#1c1428,#241a30)">
+      <b>VDP1 sprite screen — cards, portraits, panels, effects</b>
+      <span>Gouraud gradients, shadows, glows, flips live here. </span><code>slPrioritySpr0(6)</code>
+    </div></div>
+  <div class="arrow">▼ shadows/glows blend against what's below (draw order = blend order)</div>
+  <div class="layer"><div class="prio">3</div>
+    <div class="card" style="background:radial-gradient(ellipse at 50% 30%, #232350, #10102a)">
+      <b>NBG1 — painted scene background</b>
+      <span>512×256 256-color bitmap in VRAM bank A0 (one scene resident, swapped under fade).
+      Line-scroll shimmer + line-color gradient tint apply here. </span>
+      <code>slBitMapNbg1(COL_TYPE_256, BM_512x256, VDP2_VRAM_A0)</code>
+    </div></div>
+  <div class="arrow">▼ visible only where the bitmap is transparent (vignette edges)</div>
+  <div class="layer"><div class="prio">1</div>
+    <div class="card" style="background:linear-gradient(180deg,#1a1030,#000)">
+      <b>Back screen — per-line gradient</b>
+      <span>224-entry table, 448 bytes in A1. Reaches only true gaps — never a substitute for NBG1.</span>
+      <code>slBackColTable(...)</code>
+    </div></div>
+
+  <p class="note"><b>VRAM bank plan:</b> <code>A0</code> = scene bitmap (128 KB exactly) ·
+  <code>A1</code> = line-scroll / back-gradient / line-color tables (≤4 KB, below SGL's reserved top 256 B) ·
+  <code>B0</code> = reserved for future overlay plane · <code>B1</code> = text cells + PNT (untouched).
+  Cycle pattern NBG0(16col, B1) + NBG1(256col bitmap, A0) is legal per ST-058-R2 §3.3; verified by
+  gate G1 (cycle table check) and G2 (plane-visible pixel-mass) with an explicit
+  <code>slScrCycleSet</code> fallback for the known SGL auto-arbiter drop.</p>
+</div>

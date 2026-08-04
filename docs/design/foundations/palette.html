@@ -1,0 +1,48 @@
+<!-- @dsCard group="Colors" name="Royal Court palette" subtitle="RGB555-quantized chrome + retained status colors" -->
+<style>
+  .pal-root { font-family: ui-monospace, Consolas, monospace; background:#0c0c14; color:#e8d8b0; padding:24px; }
+  .pal-root h1 { font-size:18px; margin:0 0 4px; color:#ffde4a; letter-spacing:1px; }
+  .pal-root p.lead { font-size:12px; color:#9a8f78; margin:0 0 20px; max-width:640px; line-height:1.5; }
+  .pal-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px; }
+  .sw { border:1px solid #2a2a38; border-radius:6px; overflow:hidden; background:#14141e; }
+  .sw .chip { height:64px; }
+  .sw .meta { padding:8px 10px; font-size:11px; line-height:1.6; }
+  .sw .meta b { color:#fff; display:block; font-size:12px; }
+  .sw .meta code { color:#ffde4a; }
+  .sw .meta span { color:#8a8fa0; }
+  .pal-sec { margin:26px 0 10px; font-size:13px; color:#ce9431; text-transform:uppercase; letter-spacing:2px; }
+</style>
+<div class="pal-root">
+  <h1>Coup Saturn — Royal Court Palette</h1>
+  <p class="lead">Derived from the shipped scene art (title / gamescreen / waiting room / winscreen):
+  gold filigree on black, midnight damask felt, dark leather, candle glow. Every value is
+  RGB555-quantized (the Saturn CRAM word is shown) so mockup and hardware match exactly.
+  Status colors are retained from the current build for legibility.</p>
+
+  <div class="pal-sec">Chrome — new (replaces Catppuccin developer palette)</div>
+  <div class="pal-grid">
+    <div class="sw"><div class="chip" style="background:#FFDE4A"></div><div class="meta"><b>Gold Bright</b><code>#FFDE4A · 0x277F</code><span>selected text, logo sheen, coin glints</span></div></div>
+    <div class="sw"><div class="chip" style="background:#CE9431"></div><div class="meta"><b>Brass</b><code>#CE9431 · 0x1A59</code><span>panel trim, borders, inactive gold</span></div></div>
+    <div class="sw"><div class="chip" style="background:#7B5A21"></div><div class="meta"><b>Bronze Shadow</b><code>#7B5A21 · 0x116F</code><span>gradient low end of gold trims</span></div></div>
+    <div class="sw"><div class="chip" style="background:#FFA531"></div><div class="meta"><b>Candle Amber</b><code>#FFA531 · 0x1A9F</code><span>current-turn glow, warnings, timer mid</span></div></div>
+    <div class="sw"><div class="chip" style="background:#181839"></div><div class="meta"><b>Midnight Navy</b><code>#181839 · 0x1C63</code><span>panel fill (game felt family)</span></div></div>
+    <div class="sw"><div class="chip" style="background:#080821"></div><div class="meta"><b>Midnight Deep</b><code>#080821 · 0x1021</code><span>panel gradient low end, screen vignette</span></div></div>
+    <div class="sw"><div class="chip" style="background:#392118"></div><div class="meta"><b>Leather</b><code>#392118 · 0x0C87</code><span>lobby/menu panel fill (waiting-room family)</span></div></div>
+    <div class="sw"><div class="chip" style="background:#A52121"></div><div class="meta"><b>Blood Red</b><code>#A52121 · 0x1094</code><span>coup/assassinate accents, corner gems</span></div></div>
+    <div class="sw"><div class="chip" style="background:#EFDEB5"></div><div class="meta"><b>Parchment</b><code>#EFDEB5 · 0x5B7D</code><span>body text on dark panels</span></div></div>
+  </div>
+
+  <div class="pal-sec">Status — retained from current build</div>
+  <div class="pal-grid">
+    <div class="sw"><div class="chip" style="background:#FFFFFF"></div><div class="meta"><b>Text White</b><code>#FFFFFF · 0x7FFF</code><span>primary text (CRAM bank 0)</span></div></div>
+    <div class="sw"><div class="chip" style="background:#A5E7A5"></div><div class="meta"><b>Success Green</b><code>#A5E7A5 · 0x5394</code><span>ready, income, your-turn name</span></div></div>
+    <div class="sw"><div class="chip" style="background:#F78CAD"></div><div class="meta"><b>Error Red</b><code>#F78CAD · 0x563E</code><span>errors, DEAD, failed challenge</span></div></div>
+    <div class="sw"><div class="chip" style="background:#8CB5FF"></div><div class="meta"><b>Accent Blue</b><code>#8CB5FF · 0x7ED1</code><span>links/accent (demoted from chrome role)</span></div></div>
+  </div>
+
+  <div class="pal-sec">CRAM budget</div>
+  <p class="lead">Mode 0 (1024 colors). Banks 0–15 text (values above rewritten in place — same slots,
+  new colors), 16–24 sprites, 25–31 freed (game-over strips retired), 32–47 shared 256-color
+  background palette for all four scene bitmaps, 48–63 reserve. Escape hatch: CRAM mode 1
+  (2048 colors) if the shared background quantization report fails quality review.</p>
+</div>

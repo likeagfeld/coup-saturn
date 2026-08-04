@@ -1,0 +1,75 @@
+<!-- @dsCard group="Screens" name="Title screen — before / after" subtitle="Painted background + lit logo + gouraud menu" -->
+<style>
+  .tt-root { font-family: ui-monospace, Consolas, monospace; background:#0c0c14; color:#e8d8b0; padding:24px; }
+  .tt-root h1 { font-size:18px; margin:0 0 4px; color:#ffde4a; letter-spacing:1px; }
+  .tt-root p.lead { font-size:12px; color:#9a8f78; margin:0 0 18px; max-width:660px; line-height:1.5; }
+  .frames { display:flex; gap:24px; flex-wrap:wrap; }
+  .frame { width:480px; }
+  .frame .tag { font-size:11px; letter-spacing:2px; margin-bottom:6px; }
+  .screen { width:480px; height:336px; position:relative; overflow:hidden; border:1px solid #2a2a38;
+            image-rendering:pixelated; font-family:inherit; }
+  /* BEFORE */
+  .b-scr { background:#181825; }
+  .b-hdr { position:absolute; inset:0 0 auto 0; height:56px; background:#313142; }
+  .b-logo { position:absolute; top:14px; left:0; right:0; text-align:center; color:#ffde4a; font-weight:bold; font-size:26px; letter-spacing:6px; }
+  .b-band { position:absolute; top:96px; left:0; right:0; height:120px; display:flex; gap:26px; padding-left:30px; }
+  .b-port { width:64px; height:96px; background:#3a3a52; border:1px solid #55556e; }
+  .b-play { position:absolute; bottom:64px; left:50%; transform:translateX(-50%); background:#313142; color:#a5e7a5; padding:5px 18px; font-size:13px; }
+  .b-hint { position:absolute; bottom:26px; left:0; right:0; text-align:center; color:#6c7086; font-size:11px; }
+  /* AFTER */
+  .a-scr { background:radial-gradient(ellipse at 50% 115%, #241a30 0%, #0a0714 55%, #000 100%); }
+  .a-scr::before { content:""; position:absolute; inset:0;
+     background:repeating-linear-gradient(45deg, rgba(255,222,74,.02) 0 2px, transparent 2px 14px); }
+  .a-rule { position:absolute; left:36px; right:36px; height:2px; background:linear-gradient(90deg, transparent, #ce9431 15%, #ffde4a 50%, #ce9431 85%, transparent); }
+  .a-logo { position:absolute; top:30px; left:0; right:0; text-align:center; font-weight:bold; font-size:44px; letter-spacing:10px;
+            font-family:Georgia, 'Times New Roman', serif;
+            background:linear-gradient(180deg,#fff3b0 0%, #ffde4a 35%, #a56a18 75%, #ffde4a 100%);
+            -webkit-background-clip:text; background-clip:text; color:transparent;
+            text-shadow:0 0 24px rgba(255,165,49,.25); }
+  .a-band { position:absolute; top:118px; left:0; right:0; height:120px; display:flex; gap:26px; padding-left:30px; }
+  .a-port { width:64px; height:96px; border:1px solid #7b5a21; position:relative;
+            background:linear-gradient(160deg, #3a2a52 0%, #1c1430 60%, #0d0a1a 100%); }
+  .a-port::after { content:""; position:absolute; inset:0; background:linear-gradient(295deg, transparent 55%, rgba(255,222,74,.35) 92%); }
+  .a-port.lit::after { background:linear-gradient(295deg, transparent 40%, rgba(255,222,74,.6) 92%); }
+  .a-play { position:absolute; bottom:58px; left:50%; transform:translateX(-50%);
+            background:linear-gradient(160deg,#2c2c5e 0%, #181839 55%, #080821 100%);
+            border:2px solid; border-image:linear-gradient(180deg,#ffde4a,#7b5a21) 1;
+            color:#ffde4a; padding:6px 26px; font-size:13px; letter-spacing:2px;
+            box-shadow:0 0 16px rgba(255,165,49,.35); }
+  .a-hint { position:absolute; bottom:24px; left:0; right:0; text-align:center; color:#9a8f78; font-size:11px; }
+  .cap { font-size:11px; color:#8a8fa0; line-height:1.6; margin-top:8px; width:480px; }
+  .cap code { color:#8cb5ff; }
+</style>
+<div class="tt-root">
+  <h1>Title Screen — Before / After</h1>
+  <p class="lead">Mockups at 1.5× of 320×224. The AFTER frame composites the shipped gold-filigree
+  title art (CoupTitleScreen.png) on VDP2 NBG1 — today that art never appears on Saturn; the logo is
+  a lone 256×64 sprite over flat rects.</p>
+  <div class="frames">
+    <div class="frame">
+      <div class="tag" style="color:#f78cad">BEFORE — current build</div>
+      <div class="screen b-scr">
+        <div class="b-hdr"></div><div class="b-logo">COUP</div>
+        <div class="b-band"><div class="b-port"></div><div class="b-port"></div><div class="b-port"></div><div class="b-port"></div><div class="b-port"></div></div>
+        <div class="b-play">Play</div><div class="b-hint">[R]Rules</div>
+      </div>
+      <div class="cap">Flat header rect, flat portrait band, flat button. Full-screen background is a
+      71,680 px VDP1 polygon every frame.</div>
+    </div>
+    <div class="frame">
+      <div class="tag" style="color:#a5e7a5">AFTER — facelift</div>
+      <div class="screen a-scr">
+        <div class="a-rule" style="top:22px"></div>
+        <div class="a-logo">COUP</div>
+        <div class="a-rule" style="top:100px"></div>
+        <div class="a-band"><div class="a-port"></div><div class="a-port lit"></div><div class="a-port"></div><div class="a-port"></div><div class="a-port"></div></div>
+        <div class="a-play">PLAY</div>
+        <div class="a-hint">[R] RULES</div>
+      </div>
+      <div class="cap">Painted art on <code>NBG1</code> (VDP1 refunds 72k px/frame) with sine
+      line-scroll shimmer on the filigree rules; portrait parade gains per-sprite gouraud rim-light
+      (lit = center slot); PLAY = gouraud panel + gradient polyline border + amber glow;
+      scene enters via color-offset fade from black.</div>
+    </div>
+  </div>
+</div>

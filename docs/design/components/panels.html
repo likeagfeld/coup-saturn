@@ -1,0 +1,67 @@
+<!-- @dsCard group="Components" name="Panel & effect styles" subtitle="Current flat vs gouraud / shadow / glow / mesh — with VDP1 cost badges" -->
+<style>
+  .pn-root { font-family: ui-monospace, Consolas, monospace; background:#0c0c14; color:#e8d8b0; padding:24px; }
+  .pn-root h1 { font-size:18px; margin:0 0 4px; color:#ffde4a; letter-spacing:1px; }
+  .pn-root p.lead { font-size:12px; color:#9a8f78; margin:0 0 20px; max-width:660px; line-height:1.5; }
+  .pn-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:16px; }
+  .cell { background:#14141e; border:1px solid #2a2a38; border-radius:6px; padding:14px; }
+  .cell .demo { height:84px; display:flex; align-items:center; justify-content:center; margin-bottom:10px;
+                image-rendering:pixelated; position:relative; background:
+                radial-gradient(ellipse at 50% 20%, #1d1d44, #0d0d24); border-radius:4px; }
+  .cell b { font-size:12px; color:#fff; display:block; }
+  .cell span { font-size:11px; color:#b0a890; line-height:1.5; display:block; margin:4px 0; }
+  .cost { display:inline-block; font-size:10px; padding:2px 7px; border-radius:10px; margin-top:2px; }
+  .cost.free { background:#123a12; color:#a5e7a5; }
+  .cost.mid  { background:#3a2e08; color:#ffde4a; }
+  .cost.hot  { background:#3a0d0d; color:#f78cad; }
+  .p-flat { width:150px; height:44px; background:#313142; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; }
+  .p-grad { width:150px; height:44px; display:flex; align-items:center; justify-content:center; color:#ffde4a; font-size:11px;
+            background:linear-gradient(160deg, #2c2c5e 0%, #181839 55%, #080821 100%);
+            border:2px solid; border-image:linear-gradient(180deg,#ffde4a,#7b5a21) 1; }
+  .p-shadow { width:130px; height:40px; background:linear-gradient(160deg,#2c2c5e,#12122e); position:relative;
+              display:flex; align-items:center; justify-content:center; color:#efdeb5; font-size:11px; }
+  .p-shadow::after { content:""; position:absolute; left:8px; top:8px; width:100%; height:100%;
+                     background:rgba(0,0,0,.55); z-index:-1; }
+  .p-glow { width:130px; height:40px; background:linear-gradient(160deg,#2c2c5e,#12122e);
+            display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px;
+            box-shadow:0 0 18px 4px rgba(255,165,49,.55); border:1px solid #ffa531; }
+  .p-dim { width:130px; height:40px; background:linear-gradient(160deg,#16162f,#090912); filter:brightness(.5);
+           display:flex; align-items:center; justify-content:center; color:#8a8fa0; font-size:11px; }
+  .p-mesh { width:130px; height:40px; position:relative; display:flex; align-items:center; justify-content:center; color:#efdeb5; font-size:11px;
+            background:conic-gradient(#2c2c5e 90deg, transparent 90deg 180deg, #2c2c5e 180deg 270deg, transparent 270deg) 0 0/4px 4px; }
+  .p-timer { width:170px; height:14px; border:1px solid #7b5a21; background:#080821; position:relative; }
+  .p-timer i { position:absolute; inset:1px auto 1px 1px; width:62%; background:linear-gradient(90deg,#a5e7a5,#ffde4a 70%,#ffa531); }
+</style>
+<div class="pn-root">
+  <h1>Panel &amp; Effect Styles</h1>
+  <p class="lead">Every style maps to one concrete VDP1 mechanism with a measured cost class.
+  Gradient panels replace today's flat rectangles at identical fill cost (gouraud is a
+  write-only mode — ST-013-R3). The 6× effects (shadow, glow) are budgeted per frame and
+  gated by the BEF transfer-over check.</p>
+  <div class="pn-grid">
+    <div class="cell"><div class="demo"><div class="p-flat">CURRENT</div></div>
+      <b>Flat panel (today)</b><span>Polygon, RGB555, grda=0. What every screen uses now.</span>
+      <span class="cost free">baseline</span></div>
+    <div class="cell"><div class="demo"><div class="p-grad">FACELIFT</div></div>
+      <b>Gouraud panel + gold border</b><span>Polygon + 8-byte gouraud table (4-corner gradient); Polyline + gouraud for the brass→bronze frame.</span>
+      <span class="cost free">write-only — same cost as flat</span></div>
+    <div class="cell"><div class="demo"><div class="p-shadow">CARD</div></div>
+      <b>Drop shadow</b><span>Shadow-mode polygon (ccalc=001) offset +8,+8 behind panels/cards. Halves luminance of RGB pixels beneath.</span>
+      <span class="cost hot">6× fill on covered px — card-sized only</span></div>
+    <div class="cell"><div class="demo"><div class="p-glow">YOUR TURN</div></div>
+      <b>Selection glow</b><span>Half-transparent RGB polygon ring (ccalc=011) around the active seat / focused button.</span>
+      <span class="cost hot">6× fill — ≤8k px per frame</span></div>
+    <div class="cell"><div class="demo"><div class="p-dim">ELIMINATED</div></div>
+      <b>Dimmed state</b><span>Half-luminance (ccalc=010) redraw of the same sprite — no second texture, no framebuffer read.</span>
+      <span class="cost free">cheap</span></div>
+    <div class="cell"><div class="demo"><div class="p-mesh">DISSOLVE</div></div>
+      <b>Mesh dissolve</b><span>CMDPMOD bit 8 checkerboard. Works on everything including palette text — the free transparency.</span>
+      <span class="cost free">free</span></div>
+    <div class="cell"><div class="demo"><div class="p-timer"><i></i></div></div>
+      <b>Gradient timer bar</b><span>Gouraud polygon, table animated green→amber→red as the response window drains.</span>
+      <span class="cost mid">+8 B/frame table write (double-buffered pool)</span></div>
+  </div>
+  <p class="lead" style="margin-top:18px"><b style="color:#f78cad">Hard rule (G5):</b> no shadow/glow
+  surface may cover text — the 4bpp font is color-bank code (MSB=0), so blends would replace glyphs,
+  not shade them. Text fades use VDP2 color offset or mesh instead.</p>
+</div>
