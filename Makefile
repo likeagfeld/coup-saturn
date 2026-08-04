@@ -135,6 +135,8 @@ COUP_TEST_SRCS := $(wildcard $(COUP_TEST_DIR)/*.c) \
                   $(COUP_SRC_DIR)/coup_render.c \
                   pal/saturn/saturn_bg.c \
                   pal/saturn/saturn_fade.c \
+                  pal/saturn/saturn_vdp1.c \
+                  pal/saturn/saturn_font.c \
                   $(TESTS_FW)/cui_test_framework.c \
                   $(TESTS_FW)/mocks/mock_pal.c \
                   $(CORE_SRC)/cui_pal.c

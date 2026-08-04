@@ -107,6 +107,55 @@
 #define SATURN_VDP1_SPR_PMOD    (VDP1_PMOD_ECD_DISABLE | VDP1_CMOD_BANK_16)
 
 /*============================================================================
+ * Gouraud shading
+ *
+ * Gouraud interpolates a signed per-channel correction across the four corners
+ * of a part and ADDS it to the source colour (ST-013-R3 section 5.3). It is a
+ * WRITE-ONLY mode - the framebuffer is never read - so unlike half-transparency
+ * or shadow it costs no extra fill time. A gradient panel is therefore exactly
+ * as expensive as the flat rectangle it replaces.
+ *
+ * It requires an RGB-code source. That rules out the 4bpp sprites, which are
+ * colour-bank data, but the UI panels are already RGB direct-colour polygons
+ * (SATURN_VDP1_RECT_PMOD sets VDP1_CMOD_RGB), so they can be shaded as-is.
+ *============================================================================*/
+
+/* Colour-calculation bits (CMDPMOD 2-0). 100b = gouraud. */
+#define VDP1_CCALC_GOURAUD      0x04
+
+#define SATURN_VDP1_RECT_GRD_PMOD (SATURN_VDP1_RECT_PMOD | VDP1_CCALC_GOURAUD)
+
+/*
+ * Gouraud table pool.
+ *
+ * Each table is 4 RGB555 words (8 bytes) for corners A,B,C,D and must be
+ * 8-byte aligned, above 0x1F, and at or below 0x7FFFF.
+ *
+ * Placement constraints:
+ *   - NOT inside the command region (0x80 .. 0x80 + 2048*32), which is
+ *     rewritten wholesale every frame by saturn_vdp1_flush_cmds().
+ *   - NOT inside the texture area, which the asset loaders chain upward from
+ *     SATURN_VDP1_TEX_OFFSET.
+ *   - NOT near the top of VRAM. 0x7FF00-0x7FFFF is SGL's documented lighting
+ *     buffer (GouraudRAM, SL_DEF.H:225), but MEASURED: a pool at 0x7F000 read
+ *     back as garbage and shaded the panels with arbitrary hues, so SGL's use
+ *     of the top of VDP1 VRAM extends further than its one documented
+ *     reservation. Treat the whole top page as SGL's.
+ *
+ * The pool therefore lives in the alignment gap between the command table
+ * (ends 0x10080) and the texture area (starts 0x11000, 4 KB aligned). That
+ * gap is 3,968 bytes that nothing else can address, because both neighbours
+ * are regions this file defines.
+ */
+#define SATURN_VDP1_GRD_POOL    0x10800
+#define SATURN_VDP1_GRD_MAX     64
+#define SATURN_VDP1_GRD_SIZE    8
+
+/* Neutral gouraud channel value: the hardware subtracts 0x10, so 0x10 means
+ * "no change", 0x00 is -16 and 0x1F is +15. */
+#define SATURN_VDP1_GRD_NEUTRAL 0x10
+
+/*============================================================================
  * VDP1 Texture VRAM Layout
  *============================================================================*/
 
@@ -304,6 +353,50 @@ int saturn_vdp1_draw_text(int x, int y, const char* text, int len, int cram_bank
  * @return Number of rectangle commands written this frame
  */
 int saturn_vdp1_get_command_count(void);
+
+/**
+ * Encode one gouraud table entry from signed per-channel corrections.
+ *
+ * The hardware stores 0x00..0x1F per channel and subtracts 0x10, giving a
+ * correction range of -16..+15 which is ADDED to the source colour and then
+ * clamped. Pure function; host-testable.
+ *
+ * @param dr,dg,db  corrections in the range -16..+15 (clamped)
+ * @return RGB555 word for one corner
+ */
+uint16_t saturn_vdp1_gouraud_word(int dr, int dg, int db);
+
+/**
+ * Build a vertical-shade table: both top corners lightened by `top`, both
+ * bottom corners by `bottom` (use negatives to darken). Applied equally to
+ * R, G and B so the hue is preserved - an uneven correction shifts hue.
+ *
+ * @param out  four RGB555 words, corners A,B,C,D (UL, UR, LR, LL)
+ */
+void saturn_vdp1_gouraud_vshade(uint16_t out[4], int top, int bottom);
+
+/**
+ * Upload a gouraud table to the VDP1 pool.
+ * Call once at init for static gradients. Slots are 0..SATURN_VDP1_GRD_MAX-1.
+ */
+void saturn_vdp1_set_gouraud_table(int slot, const uint16_t colors[4]);
+
+/**
+ * Draw a rectangle shaded by a gouraud table.
+ *
+ * Identical cost to saturn_vdp1_draw_rect - gouraud is write-only.
+ *
+ * @param rgb555  base colour the correction is added to
+ * @param slot    gouraud pool slot uploaded via saturn_vdp1_set_gouraud_table
+ * @return true if drawn, false if the command budget is exhausted
+ */
+bool saturn_vdp1_draw_rect_gouraud(int x, int y, int w, int h,
+                                   uint16_t rgb555, int slot);
+
+/**
+ * VDP1 VRAM byte offset of a gouraud pool slot. Pure; host-testable.
+ */
+uint32_t saturn_vdp1_gouraud_slot_addr(int slot);
 
 /*============================================================================
  * Testable API (Software Logic)

@@ -549,3 +549,97 @@ uint32_t saturn_vdp1_get_font_end_offset(const saturn_font_registry_t* reg)
     /* Return cursor aligned to 8 bytes */
     return (reg->vram_cursor + 7) & ~(uint32_t)7;
 }
+
+/*============================================================================
+ * Gouraud Shading
+ *============================================================================*/
+
+uint16_t saturn_vdp1_gouraud_word(int dr, int dg, int db)
+{
+    int r = SATURN_VDP1_GRD_NEUTRAL + dr;
+    int g = SATURN_VDP1_GRD_NEUTRAL + dg;
+    int b = SATURN_VDP1_GRD_NEUTRAL + db;
+
+    if (r < 0) {
+        r = 0;
+    } else if (r > 0x1F) {
+        r = 0x1F;
+    }
+    if (g < 0) {
+        g = 0;
+    } else if (g > 0x1F) {
+        g = 0x1F;
+    }
+    if (b < 0) {
+        b = 0;
+    } else if (b > 0x1F) {
+        b = 0x1F;
+    }
+
+    /* Saturn RGB555: 0BBBBBGGGGGRRRRR. The MSB is ignored for gouraud
+     * entries (ST-013-R3 section 5.3). */
+    return (uint16_t)(((uint16_t)b << 10) | ((uint16_t)g << 5) | (uint16_t)r);
+}
+
+void saturn_vdp1_gouraud_vshade(uint16_t out[4], int top, int bottom)
+{
+    uint16_t hi, lo;
+
+    if (!out) return;
+
+    /* Equal correction on all three channels preserves hue; an uneven one
+     * would tint the panel as it shades. */
+    hi = saturn_vdp1_gouraud_word(top, top, top);
+    lo = saturn_vdp1_gouraud_word(bottom, bottom, bottom);
+
+    out[0] = hi;  /* A - upper left  */
+    out[1] = hi;  /* B - upper right */
+    out[2] = lo;  /* C - lower right */
+    out[3] = lo;  /* D - lower left  */
+}
+
+uint32_t saturn_vdp1_gouraud_slot_addr(int slot)
+{
+    if (slot < 0) slot = 0;
+    if (slot >= SATURN_VDP1_GRD_MAX) slot = SATURN_VDP1_GRD_MAX - 1;
+    return SATURN_VDP1_GRD_POOL + (uint32_t)slot * SATURN_VDP1_GRD_SIZE;
+}
+
+void saturn_vdp1_set_gouraud_table(int slot, const uint16_t colors[4])
+{
+#ifdef __SATURN__
+    volatile uint16_t* dst;
+    int i;
+
+    if (!colors || slot < 0 || slot >= SATURN_VDP1_GRD_MAX) return;
+
+    dst = (volatile uint16_t*)(uintptr_t)(SATURN_VDP1_VRAM
+                                          + saturn_vdp1_gouraud_slot_addr(slot));
+    for (i = 0; i < 4; i++) {
+        dst[i] = colors[i];
+    }
+#else
+    (void)slot; (void)colors;
+#endif
+}
+
+bool saturn_vdp1_draw_rect_gouraud(int x, int y, int w, int h,
+                                   uint16_t rgb555, int slot)
+{
+    saturn_vdp1_cmd_t cmd;
+
+    if (!saturn_vdp1_check_budget(&g_vdp1_state)) {
+        return false;
+    }
+
+    saturn_vdp1_encode_polygon(&cmd, x, y, w, h, rgb555);
+
+    /* Gouraud is write-only, so this costs no extra fill time. CMDGRDA is a
+     * VRAM byte address divided by 8 (ST-013-R3 section 6.8). */
+    cmd.pmod = SATURN_VDP1_RECT_GRD_PMOD;
+    cmd.grda = (uint16_t)(saturn_vdp1_gouraud_slot_addr(slot) / 8);
+
+    saturn_vdp1_write_cmd(g_vdp1_state.cmd_count, &cmd);
+    g_vdp1_state.cmd_count++;
+    return true;
+}

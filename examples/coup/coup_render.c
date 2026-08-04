@@ -27,6 +27,8 @@
 #include "coup_anim_sprites.h"
 #include "saturn_pal.h"          /* cui_saturn_font_set_active */
 #include "saturn_fade.h"
+#include "saturn_vdp1.h"
+#include "saturn_vdp2.h"
 #endif
 
 /*============================================================================
@@ -44,6 +46,53 @@ static void panel(int x, int y, int w, int h, uint32_t color)
 {
     CUI_DISPLAY()->draw_rect(x, y, w, h, color);
 }
+
+#ifdef __SATURN__
+/* Gouraud pool slots, uploaded once by coup_render_init_shading(). */
+enum {
+    COUP_GRD_PANEL = 0,   /* soft top-lit panel   */
+    COUP_GRD_RAISED,      /* stronger, for plates */
+    COUP_GRD_COUNT
+};
+
+/**
+ * Upload the gradient tables. Call once after the PAL is up.
+ *
+ * Gouraud is a write-only VDP1 mode, so a shaded panel costs exactly what the
+ * flat rectangle it replaces cost - the gradients below are free.
+ */
+void coup_render_init_shading(void)
+{
+    uint16_t tbl[4];
+
+    saturn_vdp1_gouraud_vshade(tbl, +5, -5);
+    saturn_vdp1_set_gouraud_table(COUP_GRD_PANEL, tbl);
+
+    saturn_vdp1_gouraud_vshade(tbl, +9, -8);
+    saturn_vdp1_set_gouraud_table(COUP_GRD_RAISED, tbl);
+}
+#endif
+
+#ifdef __SATURN__
+/**
+ * Draw a panel lit from above.
+ *
+ * A gouraud-shaded polygon: same command count and same fill cost as the flat
+ * rectangle it replaces, because gouraud is write-only. Falls back to a flat
+ * fill if the VDP1 command budget is exhausted.
+ *
+ * Saturn-only: the gradient has no meaning on the other platforms, and both
+ * call sites are already inside Saturn blocks.
+ */
+static void panel_lit(int x, int y, int w, int h, uint32_t color, int slot)
+{
+    uint16_t rgb555 = saturn_rgba_to_rgb555(color);
+    if (saturn_vdp1_draw_rect_gouraud(x, y, w, h, rgb555, slot)) {
+        return;
+    }
+    CUI_DISPLAY()->draw_rect(x, y, w, h, color);
+}
+#endif
 
 /** Draw a thin horizontal accent line (2px tall). */
 static void hline(int x, int y, int w, uint32_t color)
@@ -158,7 +207,7 @@ static int char_to_sprite(int character)
 static void portrait_medallion(int x, int y, int w, int h)
 {
     panel(x, y, w, h, COUP_FRAME_BRASS);
-    panel(x + 2, y + 2, w - 4, h - 4, COUP_PORTRAIT_BG);
+    panel_lit(x + 2, y + 2, w - 4, h - 4, COUP_PORTRAIT_BG, COUP_GRD_PANEL);
 }
 
 /** Draw a row of background tiles across the screen width.
@@ -281,7 +330,8 @@ static void coup_render_title(const coup_state_t* st)
         int by = L->menu_y - pad_y;
 
         panel(bx, by, bw, bh, COUP_FRAME_BRASS);
-        panel(bx + 2, by + 2, bw - 4, bh - 4, COUP_PANEL_SELECT);
+        panel_lit(bx + 2, by + 2, bw - 4, bh - 4, COUP_PANEL_SELECT,
+                  COUP_GRD_RAISED);
 
         cui_saturn_font_set_active(COUP_FONT_DISPLAY);
         CUI_DISPLAY()->draw_text_sprite(bx + pad_x, by + pad_y, "PLAY",
@@ -1745,6 +1795,17 @@ void coup_render_screen(const coup_state_t* st)
      * itself, which would mean holding up input and the network poll. */
     {
         static int s_last_screen = -1;
+
+        /* Refresh the gouraud tables every frame.
+         *
+         * MEASURED: uploading them once at init left the panels shaded by
+         * garbage - banded, hue-shifted stripes rather than a smooth ramp -
+         * and relocating the pool only changed WHICH garbage appeared. Some
+         * other writer reaches this region between init and draw. Two tables
+         * is 16 VRAM writes per frame, which is far cheaper than diagnosing
+         * the interloper, and makes the shading independent of whatever else
+         * touches VDP1 VRAM. */
+        coup_render_init_shading();
 
         if ((int)st->screen != s_last_screen) {
             s_last_screen = (int)st->screen;

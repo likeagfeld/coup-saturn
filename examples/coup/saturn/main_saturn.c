@@ -236,6 +236,9 @@ void main(void)
         cui_saturn_font_upload_all();
     }
 
+    /* Gradient tables for the lit UI panels. */
+    coup_render_init_shading();
+
     /* ---- Load sprite assets into VDP1 VRAM ---- */
     coup_sprites_load();
     coup_gameover_load();

@@ -400,6 +400,11 @@ void coup_start_game(uint32_t seed, uint8_t my_pid);
 
 void coup_render_screen(const coup_state_t* st);
 
+#ifdef __SATURN__
+/** Upload the VDP1 gouraud gradient tables. Call once after the PAL is up. */
+void coup_render_init_shading(void);
+#endif
+
 /*============================================================================
  * Audio API (coup_audio.c)
  *============================================================================*/
