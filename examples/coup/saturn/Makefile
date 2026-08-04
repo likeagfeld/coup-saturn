@@ -93,6 +93,7 @@ SRCS += $(PAL_SATURN)/saturn_key_repeat.c
 SRCS += $(PAL_SATURN)/saturn_vdp2.c
 SRCS += $(PAL_SATURN)/saturn_font.c
 SRCS += $(PAL_SATURN)/saturn_vdp1.c
+SRCS += $(PAL_SATURN)/saturn_bg.c
 
 # Object files in build subdirectory
 OBJS = $(addprefix $(BUILD)/,$(notdir $(SRCS:.c=.o)))

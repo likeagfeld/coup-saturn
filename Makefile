@@ -129,6 +129,7 @@ COUP_TEST_DIR := tests/coup
 COUP_TEST_SRCS := $(wildcard $(COUP_TEST_DIR)/*.c) \
                   $(COUP_GAME_SRCS) $(COUP_RULES_SRCS) $(COUP_BOT_SRCS) $(COUP_VIEW_SRCS) \
                   $(COUP_SRC_DIR)/coup_render.c \
+                  pal/saturn/saturn_bg.c \
                   $(TESTS_FW)/cui_test_framework.c \
                   $(TESTS_FW)/mocks/mock_pal.c \
                   $(CORE_SRC)/cui_pal.c
@@ -148,12 +149,17 @@ $(COUP_TEST_RUNNER): $(COUP_TEST_OBJS)
 # Coup test compilation (needs framework + coup source + mock includes)
 $(BUILD_DIR)/$(COUP_TEST_DIR)/%.o: $(COUP_TEST_DIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -I$(TESTS_FW) -I$(COUP_SRC_DIR) -I$(TESTS_FW)/mocks -c -o $@ $<
+	$(CC) $(CFLAGS) -I$(TESTS_FW) -I$(COUP_SRC_DIR) -I$(TESTS_FW)/mocks -Ipal/saturn -c -o $@ $<
 
 # Coup source compilation
 $(BUILD_DIR)/$(COUP_SRC_DIR)/%.o: $(COUP_SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -I$(COUP_SRC_DIR) -c -o $@ $<
+
+# Saturn PAL pure-logic compilation (host-testable parts only)
+$(BUILD_DIR)/pal/saturn/%.o: pal/saturn/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -Ipal/saturn -c -o $@ $<
 
 # Framework/mocks/core compilation used by test-coup
 $(BUILD_DIR)/$(CORE_SRC)/%.o: $(CORE_SRC)/%.c

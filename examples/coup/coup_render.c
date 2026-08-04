@@ -147,7 +147,9 @@ static void coup_render_title(const coup_state_t* st)
     /* === VDP1 LAYER === */
 
     /* 1. Full-screen dark background */
+#ifndef COUP_QA_UNMASK_NBG1
     panel_r(L->bg, COUP_BG_DARK);
+#endif
 
     /* 2. Title header panel (full width) */
     panel_r(L->header_panel, COUP_PANEL_HEADER);
@@ -1540,8 +1542,15 @@ static void render_corners(void)
 
 static void coup_render_game(const coup_state_t* st)
 {
-    /* Grid/border background — gaps between panels reveal this color */
+#ifndef __SATURN__
+    /* Grid/border background — gaps between panels reveal this color.
+     *
+     * On Saturn this is VDP2 NBG1's job: the painted table art sits behind
+     * everything at priority 3. Drawing it here would both cover that layer
+     * and waste a full-screen 320*224 = 71,680 px VDP1 fill every frame,
+     * which measured as HALF of this screen's entire fill cost. */
     panel_r(COUP_UI.title.bg, COUP_BG_GRID);
+#endif
 
     /* Split center panels */
     panel_r(COUP_UI.game.log_panel, COUP_BG_DARK);

@@ -23,6 +23,15 @@ typedef int16_t     Sint16;
 typedef uint32_t    Uint32;
 typedef int32_t     Sint32;
 
+/* SGL logical type (SL_DEF.H:38). Declared here, before the function
+ * prototypes that return it. */
+typedef int Bool;
+
+/* SGL result codes (SEGA_XPT.H:70-71). NOTE THE POLARITY: success is ZERO.
+ * A `== 0` test therefore means SUCCESS, not failure. */
+#define OK               0
+#define NG             (-1)
+
 /* SGL fixed-point type (16.16 format) */
 typedef Sint32 FIXED;
 #define toFIXED(x) ((FIXED)(x) << 16)
@@ -190,6 +199,24 @@ extern void slPageNbg0(void *cell_adr, void *col_adr, Uint16 data_type);
  */
 extern void slPageNbg1(void *cell_adr, void *col_adr, Uint16 data_type);
 
+/*
+ * Bitmap-mode scroll screens (SGL 3.02j SL_DEF.H:1084-1088).
+ *
+ * slBitMapNbg1(col_type, bm_size, bm_adr): bm_adr must sit on a 0x20000
+ * boundary. slBMPaletteNbg1 selects the palette bank in the bitmap's own
+ * colour granularity (256-colour banks for COL_TYPE_256).
+ */
+extern void slBitMapNbg1(Uint16 col_type, Uint16 bm_size, void *bm_adr);
+extern void slBMPalette(Uint16 screen, Uint16 pal);
+
+#define bmNBG0          1       /* SL_DEF.H:670 */
+#define bmNBG1          0       /* SL_DEF.H:671 */
+#define slBMPaletteNbg1(pal)  slBMPalette(bmNBG1, pal)
+
+/* Bitmap size selectors - values from SL_DEF.H:699-700, not invented. */
+#define BM_512x256      0x02
+#define BM_512x512      0x06
+
 /**
  * Set scroll plane size (number of pages)
  * @param size - PL_SIZE_1x1, PL_SIZE_2x1, or PL_SIZE_2x2
@@ -220,10 +247,20 @@ extern void slScrPosNbg0(FIXED x, FIXED y);
 extern void slPriority(Sint16 screen, Uint16 priority);
 
 /**
- * Enable/disable scroll planes
+ * Enable/disable scroll planes.
+ *
+ * "NG is returned for settings that cannot generate a cycle pattern"
+ * (SCROLL.TXT:110). The real prototype returns Bool (SL_DEF.H:943); it was
+ * previously declared void here, which discarded that failure signal.
+ *
+ * BEWARE THE POLARITY: OK is 0 and NG is -1 (SEGA_XPT.H:70-71), so failure is
+ * `!= OK`, NOT `== 0`. No SGL sample checks this return value, so there is no
+ * sample precedent to copy - the documentation is the only authority.
+ *
  * @param flags - Bitmask of NBGxON flags
+ * @return OK (0) if the cycle pattern was armed, NG (-1) if not
  */
-extern void slScrAutoDisp(Uint32 flags);
+extern Bool slScrAutoDisp(Uint32 flags);
 
 /*============================================================================
  * VDP2 Background Functions (Phase 3: Efficient Screen Clear)
@@ -308,11 +345,23 @@ extern void slSpriteColMode(Uint16 mode);
 #define PL_SIZE_2x2     3   /* 2 pages wide x 2 pages tall */
 
 /* Color modes for character planes */
-#define COL_TYPE_16     0   /* 16-color palette */
-#define COL_TYPE_256    1   /* 256-color palette */
-#define COL_TYPE_2048   2   /* 2048-color palette */
-#define COL_TYPE_32768  3   /* 32768 direct color */
-#define COL_TYPE_16M    4   /* 16M direct color */
+/*
+ * Colour-depth selectors (SGL 3.02j SL_DEF.H:525-529).
+ *
+ * These are BIT-FIELD values, not a 0,1,2,3 enumeration. They were previously
+ * declared here as 0..4, which is wrong for everything except COL_TYPE_16 -
+ * and since the only existing caller passes COL_TYPE_16 (0x00, correct by
+ * coincidence), the error stayed latent until the first 256-colour caller.
+ *
+ * MEASURED symptom of the wrong value: slBitMapNbg1(1, ...) renders the
+ * bitmap as garbled, colour-starved noise rather than failing.
+ */
+#define COL_TYPE_16     0x00   /* 16-color palette */
+#define COL_TYPE_256    0x10   /* 256-color palette */
+#define COL_TYPE_2048   0x20   /* 2048-color palette */
+#define COL_TYPE_32768  0x30   /* 32768 direct color */
+#define COL_TYPE_1M     0x40   /* 16M direct color (SGL spells it 1M) */
+#define COL_TYPE_16M    COL_TYPE_1M  /* backwards-compatible alias */
 
 /* Scroll plane enable flags */
 #define NBG0ON          (1 << 0)
@@ -373,8 +422,6 @@ extern void slSpriteColMode(Uint16 mode);
 #define PNB_2WORD       0
 #define CN_10BIT        0
 #define CN_12BIT        0x4000
-
-typedef int Bool;
 
 /*============================================================================
  * Sound System (SGL M68K Sound Driver + CDC CD-DA)

@@ -200,11 +200,27 @@ void main(void)
 
     slTVOff();
     slBack1ColSet((void*)(VDP2_VRAM_A1 + 0x1fffe), 0x0000);
-    slScrAutoDisp(NBG0ON);
-    slTVOn();
 
-    /* ---- CUI Initialization ---- */
+    /* ---- CUI Initialization ----
+     * Configures NBG0 as the 16-colour text layer AND uploads the painted
+     * background bitmap into VDP2 bank A0, putting NBG1 into bitmap mode.
+     * Both screens must be fully configured before they are armed below. */
     cui_saturn_init();
+
+    /* Arm both scroll screens.
+     *
+     * BEWARE THE POLARITY: SGL's OK is 0 and NG is -1 (SEGA_XPT.H:70-71), so
+     * failure is `!= OK`, not `== 0`. "NG is returned for settings that cannot
+     * generate a cycle pattern" (SCROLL.TXT:110).
+     *
+     * If the auto-arbiter cannot build a legal VDP2 VRAM cycle pattern for
+     * text + bitmap together, fall back to text-only so the game still runs
+     * rather than losing the UI entirely. Gate G1 exists to catch that case. */
+    if (slScrAutoDisp(NBG0ON | NBG1ON) != OK) {
+        slScrAutoDisp(NBG0ON);
+    }
+
+    slTVOn();
 
     /* ---- Load sprite assets into VDP1 VRAM ---- */
     coup_sprites_load();

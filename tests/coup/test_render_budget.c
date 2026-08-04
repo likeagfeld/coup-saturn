@@ -154,3 +154,39 @@ CUI_TEST(vdp1_budget_per_screen)
         CUI_ASSERT(fill <= k_budgets[i].max_fill);
     }
 }
+
+/*
+ * The Saturn build omits the full-screen background rect from the game screen
+ * because VDP2 NBG1 paints the table instead (coup_render.c: coup_render_game
+ * guards it with #ifndef __SATURN__). The host build still draws it, so this
+ * test pins the exact size of that saving. The Saturn budget is then derived
+ * arithmetically from the host measurement, and this fails if the rect ever
+ * changes shape or count.
+ */
+CUI_TEST(game_screen_fullscreen_rect_is_the_vdp2_saving)
+{
+    coup_state_t st;
+    build_busy_state(&st, COUP_SCREEN_GAME);
+
+    cui_pal_register(cui_mock_platform());
+    mock_pal_reset();
+    coup_render_screen(&st);
+
+    int fullscreen_rects = 0;
+    long saved_px = 0;
+    long total_px = mock_total_fill_px();
+
+    for (int i = 0; i < mock_pal_get_rect_call_count(); i++) {
+        mock_rect_call_t r = mock_pal_get_rect_call(i);
+        if (r.w >= 320 && r.h >= 224) {
+            fullscreen_rects++;
+            saved_px += (long)r.w * (long)r.h;
+        }
+    }
+
+    printf("  [budget] saturn game fill = %ld (host %ld - %ld drawn by VDP2)\n",
+           total_px - saved_px, total_px, saved_px);
+
+    CUI_ASSERT_EQ(1, fullscreen_rects);
+    CUI_ASSERT_EQ(71680, (int)saved_px);
+}

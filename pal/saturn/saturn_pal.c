@@ -26,6 +26,7 @@
 #include "saturn_storage.h"
 #include "saturn_vdp2.h"
 #include "saturn_vdp1.h"
+#include "saturn_bg.h"
 #include "saturn_font.h"
 #include "../../core/include/cui_color_mapper.h"
 
@@ -364,6 +365,19 @@ static cui_result_t saturn_display_init(void) {
      * Sets sprite priority to 4 (below NBG0 text at priority 5).
      */
     saturn_vdp1_init();
+
+    /*
+     * Layer order, front to back: text 7 > sprites 6 > background 3.
+     *
+     * Text and sprites move up from 5 and 4 so the painted VDP2 background
+     * has room beneath them, and so a future overlay plane can slot between.
+     * Renumbering is register-only.
+     *
+     * See docs/superpowers/specs/2026-08-04-saturn-visual-facelift-design.md
+     */
+    slPriorityNbg0(7);
+    slPrioritySpr0(6);
+    saturn_bg_init();
 
     /*
      * Initialize font registry and register the built-in 8x8 font.
