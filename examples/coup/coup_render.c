@@ -61,6 +61,25 @@ static void panel_r(cui_rect_t r, uint32_t color)
     CUI_DISPLAY()->draw_rect(r.x, r.y, r.w, r.h, color);
 }
 
+/**
+ * Full-screen background fill.
+ *
+ * On Saturn the painted backdrop lives on VDP2 NBG1 at priority 3, beneath the
+ * sprites and text. Filling the screen with a VDP1 polygon would both hide that
+ * layer and waste a 320*224 = 71,680 px fill every frame - measured as half of
+ * the game screen's entire cost. Every screen routes its background through
+ * here so the suppression is in one place rather than seven.
+ */
+static void screen_bg(cui_rect_t r, uint32_t color)
+{
+#ifdef __SATURN__
+    (void)r;
+    (void)color;
+#else
+    panel_r(r, color);
+#endif
+}
+
 /*============================================================================
  * Shared utility helpers
  *============================================================================*/
@@ -147,9 +166,7 @@ static void coup_render_title(const coup_state_t* st)
     /* === VDP1 LAYER === */
 
     /* 1. Full-screen dark background */
-#ifndef COUP_QA_UNMASK_NBG1
-    panel_r(L->bg, COUP_BG_DARK);
-#endif
+    screen_bg(L->bg, COUP_BG_DARK);
 
     /* 2. Title header panel (full width) */
     panel_r(L->header_panel, COUP_PANEL_HEADER);
@@ -250,7 +267,7 @@ static void coup_render_settings(const coup_state_t* st)
     if (diff > 2) diff = 2;
 
     /* Dark background */
-    panel_r(L->bg, COUP_BG_DARK);
+    screen_bg(L->bg, COUP_BG_DARK);
 
     /* Header */
     panel_r(L->header_panel, COUP_PANEL_HEADER);
@@ -303,7 +320,7 @@ static void coup_render_rules(const coup_state_t* st)
     int pg = st->rules_page;
 
     /* Dark background */
-    panel_r(L->bg, COUP_BG_DARK);
+    screen_bg(L->bg, COUP_BG_DARK);
 
 #ifdef __SATURN__
     /* Decorative background tiles */
@@ -462,7 +479,7 @@ static void coup_render_connecting(const coup_state_t* st)
     const char* detail_text;
 
     /* Dark background */
-    panel_r(L->bg, COUP_BG_DARK);
+    screen_bg(L->bg, COUP_BG_DARK);
 
 #ifdef __SATURN__
     /* Decorative background tiles */
@@ -574,7 +591,7 @@ static void coup_render_name_entry(const coup_state_t* st)
     int i;
 
     /* Dark background */
-    panel_r(L->bg, COUP_BG_DARK);
+    screen_bg(L->bg, COUP_BG_DARK);
 
 #ifdef __SATURN__
     /* Decorative background tiles and card_back sprite */
@@ -673,7 +690,7 @@ static void coup_render_lobby(const coup_state_t* st)
     static const uint32_t diff_colors[3] = { COUP_TEXT_GREEN, COUP_TEXT_YELLOW, COUP_TEXT_RED };
 
     /* Dark background */
-    panel_r(L->bg, COUP_BG_DARK);
+    screen_bg(L->bg, COUP_BG_DARK);
 
 #ifdef __SATURN__
     draw_bg_row(L->bg_tile_y);
@@ -1542,15 +1559,8 @@ static void render_corners(void)
 
 static void coup_render_game(const coup_state_t* st)
 {
-#ifndef __SATURN__
-    /* Grid/border background — gaps between panels reveal this color.
-     *
-     * On Saturn this is VDP2 NBG1's job: the painted table art sits behind
-     * everything at priority 3. Drawing it here would both cover that layer
-     * and waste a full-screen 320*224 = 71,680 px VDP1 fill every frame,
-     * which measured as HALF of this screen's entire fill cost. */
-    panel_r(COUP_UI.title.bg, COUP_BG_GRID);
-#endif
+    /* Grid/border background — gaps between panels reveal this color */
+    screen_bg(COUP_UI.title.bg, COUP_BG_GRID);
 
     /* Split center panels */
     panel_r(COUP_UI.game.log_panel, COUP_BG_DARK);
@@ -1620,7 +1630,9 @@ static void coup_render_game_over(const coup_state_t* st)
     if (coup_gameover_loaded()) {
         coup_gameover_draw();
     } else {
-        panel_r(GO->bg, COUP_BG_DARK);
+        /* No game-over image: fall through to the VDP2 backdrop rather than
+         * covering it with a flat rect. */
+        screen_bg(GO->bg, COUP_BG_DARK);
     }
 #else
     panel_r(GO->bg, COUP_BG_DARK);

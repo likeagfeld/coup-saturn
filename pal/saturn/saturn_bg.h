@@ -52,12 +52,27 @@
 uint32_t saturn_bg_cram_addr(int index);
 
 /**
- * Upload the bitmap and palette to VDP2, then arm NBG1.
+ * Upload the first scene's bitmap and palette to VDP2, then arm NBG1.
  * Call once, after cui_saturn_init().
  */
 void saturn_bg_init(void);
 
 /** True once saturn_bg_init() has run. */
 bool saturn_bg_is_armed(void);
+
+/**
+ * Display a different scene.
+ *
+ * Only one bitmap fits in VRAM bank A0, so this copies the scene's 128 KB
+ * into VRAM and its palette into CRAM. That is a visible cost, so it is a
+ * no-op when the requested scene is already resident - call it freely on
+ * every screen change.
+ *
+ * Out-of-range ids are ignored.
+ */
+void saturn_bg_set_scene(int scene);
+
+/** The scene currently resident in VRAM, or -1 before init. */
+int saturn_bg_current_scene(void);
 
 #endif /* SATURN_BG_H */
