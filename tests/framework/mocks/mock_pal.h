@@ -78,6 +78,12 @@ mock_text_call_t mock_pal_get_last_text_call(void);
 mock_rect_call_t mock_pal_get_last_rect_call(void);
 
 /**
+ * Get a specific draw_rect call by index.
+ * Returns a zeroed struct if index is out of range.
+ */
+mock_rect_call_t mock_pal_get_rect_call(int index);
+
+/**
  * Get the number of draw_text_sprite calls in current frame.
  */
 int mock_pal_get_sprite_text_call_count(void);

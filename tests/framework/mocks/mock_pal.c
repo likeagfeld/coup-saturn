@@ -14,7 +14,10 @@
  * Mock State
  *============================================================================*/
 
-#define MOCK_MAX_DRAW_CALLS 100
+/* Must be able to hold a full Saturn frame's worth of draw calls, so the
+ * mock can never be the limiting factor when measuring the render budget.
+ * The Saturn VDP1 command budget is 2048 (saturn_vdp1.h: SATURN_VDP1_MAX_CMDS). */
+#define MOCK_MAX_DRAW_CALLS 2048
 #define MOCK_MAX_TEXT_LEN 128
 
 typedef struct mock_draw_text_call {
@@ -113,14 +116,6 @@ int mock_pal_get_rect_call_count(void)
     return mock_state.rect_call_count;
 }
 
-const mock_draw_rect_call_t* mock_pal_get_rect_call(int index)
-{
-    if (index < 0 || index >= mock_state.rect_call_count) {
-        return NULL;
-    }
-    return &mock_state.rect_calls[index];
-}
-
 mock_text_call_t mock_pal_get_last_text_call(void)
 {
     mock_text_call_t result = {0};
@@ -131,6 +126,20 @@ mock_text_call_t mock_pal_get_last_text_call(void)
         result.color = call->color;
         strncpy(result.text, call->text, MOCK_MAX_TEXT_LEN - 1);
         result.text[MOCK_MAX_TEXT_LEN - 1] = '\0';
+    }
+    return result;
+}
+
+mock_rect_call_t mock_pal_get_rect_call(int index)
+{
+    mock_rect_call_t result = {0};
+    if (index >= 0 && index < mock_state.rect_call_count) {
+        mock_draw_rect_call_t* call = &mock_state.rect_calls[index];
+        result.x = call->x;
+        result.y = call->y;
+        result.w = call->w;
+        result.h = call->h;
+        result.color = call->color;
     }
     return result;
 }
