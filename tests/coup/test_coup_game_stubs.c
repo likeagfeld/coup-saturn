@@ -56,13 +56,12 @@ void coup_audio_debug_update(uint16_t pad_raw) { (void)pad_raw; }
 void coup_audio_debug_render(void)             { }
 
 /*============================================================================
- * Render — No-op Stub
+ * Render
+ *
+ * NOT stubbed: examples/coup/coup_render.c is linked into the test runner so
+ * the VDP1 budget gate (test_render_budget.c) can measure the real render
+ * path. Tests reach it through game_setup(), which registers the mock PAL.
  *============================================================================*/
-
-void coup_render_screen(const coup_state_t* st)
-{
-    (void)st;
-}
 
 /*============================================================================
  * Platform — No-op Stub

@@ -83,6 +83,36 @@ Mednafen at
 `C:\Users\gary\AppData\Local\Microsoft\WinGet\Packages\MednafenTeam.Mednafen_…\mednafen.exe`
 with `-qtrecord`, `-soundrecord` and `-force_module` flags confirmed present.
 
+## Environment notes (MEASURED 2026-08-04 — read before executing)
+
+- **There is no `make` and no host C compiler on this machine** (no gcc, cc,
+  clang or mingw32-make). Every `make test-coup` in this plan must be run in a
+  container, using the same image the repo already uses for `coup-server`:
+
+  ```powershell
+  docker run --rm -v "W:\coupsaturn:/src" -w /src gcc:14 make test-coup
+  ```
+
+  Run it from PowerShell, not Git Bash — Git Bash's MSYS path conversion mangles
+  the `-w /src` argument into a Windows path and Docker rejects it.
+
+- **`CUI_TEST_BEGIN` / `CUI_TEST_END` do not compile.** The macro body expands
+  `cui_current_test.name = name;`, so the macro parameter is substituted into
+  the struct member as well, producing "expected identifier before string
+  constant" for any argument. No test in the suite uses them. Use the bare
+  `CUI_TEST(name) { ... }` form with `CUI_ASSERT*` only. The working samples are
+  authoritative over the framework header's documentation.
+
+- **`coup_render.c` had never been compiled under `-Werror`**, and
+  `coup_render_title()` leaves `st` unused on non-Saturn builds. Adding the
+  renderer to the test build surfaces this; it is fixed with a guarded
+  `(void)st;`. Expect similar host-only warnings if more render code is pulled
+  into the test build later.
+
+- **`test_coup_game_stubs.c` no longer stubs `coup_render_screen`** — the real
+  renderer is linked in. Tests reach it through `game_setup()`, which already
+  registers the mock PAL.
+
 ## File Structure
 
 | File | Responsibility |

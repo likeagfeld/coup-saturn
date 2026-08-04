@@ -1,0 +1,25 @@
+{
+  "recorded": "2026-08-04",
+  "build": "pre-facelift",
+  "commit": "acd7de5",
+  "vdp1_budget": {
+    "title":     { "rects": 3,  "fill_px": 89280 },
+    "lobby":     { "rects": 16, "fill_px": 158848 },
+    "game_over": { "rects": 1,  "fill_px": 71680 },
+    "game":      { "rects": 16, "fill_px": 142624 }
+  },
+  "derived": {
+    "fullscreen_rect_px": 71680,
+    "frame_budget_px_clocks": 477000,
+    "game_screen_utilisation": 0.30,
+    "lobby_screen_utilisation": 0.33,
+    "background_share_of_game_screen": 0.50
+  },
+  "notes": [
+    "fill_px is the sum of w*h over every draw_rect in one rendered frame, measured on the host via the mock PAL (tests/coup/test_render_budget.c).",
+    "The Saturn VDP1 draws 1 px per 28.6 MHz clock, so ~477000 px-clocks is the 60 fps ceiling (ST-013-R3 VDP1 manual, txt:1114-1115).",
+    "game_over measures exactly 71680 = 320*224, i.e. a single full-screen background polygon.",
+    "That same full-screen rect is half of the game screen's total fill. Phase 1a moves it to VDP2 NBG1, after which the game and game_over ceilings in test_render_budget.c must be ratcheted down.",
+    "The pre-facelift build already sits at only ~30-33% of the frame budget, confirming headroom for the lighting effects planned in Phase 3."
+  ]
+}

@@ -140,6 +140,10 @@ static void coup_render_title(const coup_state_t* st)
 {
     const coup_title_layout_t* L = &COUP_UI.title;
 
+#ifndef __SATURN__
+    (void)st;  /* animated portrait parade is Saturn-only */
+#endif
+
     /* === VDP1 LAYER === */
 
     /* 1. Full-screen dark background */

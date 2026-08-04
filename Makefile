@@ -128,6 +128,7 @@ coup-saturn:
 COUP_TEST_DIR := tests/coup
 COUP_TEST_SRCS := $(wildcard $(COUP_TEST_DIR)/*.c) \
                   $(COUP_GAME_SRCS) $(COUP_RULES_SRCS) $(COUP_BOT_SRCS) $(COUP_VIEW_SRCS) \
+                  $(COUP_SRC_DIR)/coup_render.c \
                   $(TESTS_FW)/cui_test_framework.c \
                   $(TESTS_FW)/mocks/mock_pal.c \
                   $(CORE_SRC)/cui_pal.c
