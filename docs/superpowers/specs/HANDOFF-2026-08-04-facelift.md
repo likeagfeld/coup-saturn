@@ -36,20 +36,46 @@ active: do not write feature code until the user approves the spec.**
    `components/panels.html`, `screens/title.html`, `screens/game-table.html`.
    Each has the `<!-- @dsCard group="..." -->` first-line marker.
 
-## Remaining (in order)
+## Done (continued — Opus 5 session)
 
-1. **Two more design cards**: `docs/design/motion/card-flip.html` (distorted-quad
-   flip storyboard, ~12-frame Y-flip) and `docs/design/motion/transitions.html`
-   (color-offset fade ramp, flash-white, mesh dissolve).
-2. **Sync mockups to Claude Design** via the DesignSync tool: the user's project
-   "Design System" `projectId 019e1bff-8c1b-7eda-aaa6-3cc368c89e78` is EMPTY and
-   ready. Flow: `finalize_plan` (localDir `W:\coupsaturn\docs\design`, writes
-   `foundations/*.html`, `components/*.html`, `screens/*.html`, `motion/*.html`)
-   → `write_files` with localPath per file → done (cards self-index via @dsCard).
-3. **Spec self-review** (placeholder/consistency/scope/ambiguity), then
-   **present spec + mockups to the user for approval** (brainstorming checklist
-   items 7-8).
-4. After approval: invoke `superpowers:writing-plans` to produce the detailed
+6. **Motion cards written**: `docs/design/motion/card-flip.html` (12-frame
+   trapezoid storyboard with vertex math) and `motion/transitions.html`
+   (colour-offset ramps, flash, mesh limitation stated honestly).
+7. **All 7 cards synced to Claude Design** — project "Design System"
+   `019e1bff-8c1b-7eda-aaa6-3cc368c89e78`, planId
+   `plan_019e1bff8c1b7eda_0f0c504db51f`, localDir `docs/design`. Re-sync with a
+   fresh `finalize_plan` using the same globs.
+8. **Spec self-review found and fixed three hardware contradictions** — this was
+   the substantive work of the session, not a formality:
+   - **Gouraud/half-lum/half-trans need an RGB-code source**; every game sprite
+     is colour-bank-16, so *no sprite could have been lit as designed*. Fix:
+     Phase 3 migrates lit sprites to colour mode 1 (16-colour LUT, RGB entries,
+     32 B each); frees CRAM banks 16-24. Now spec §4.6 item 7.
+   - **Shadow/half-trans read the framebuffer**, so a shadow cast onto the VDP2
+     background is a no-op and a glow over it turns opaque. Fix: opaque shadow
+     plates + gouraud halos. Spec §4.6 item 8.
+   - **Sprite-screen colour calc is global** (RGB sprites all use priority/CC
+     register 0) — no per-seat translucency exists. Spec §4.6 item 9.
+   - Added **gate G9 (effect-efficacy)**: every effect must measurably change
+     pixels vs an effect-disabled capture. This is the gate that catches the
+     "compiles, runs, looks identical" class the three bugs above belong to.
+   - Added Phase 1 **layout calibration** to the painted UI regions in
+     `Waiting_Room2.png` / `gamescreen.png`.
+   - §4.4 fill budget recomputed: now ≤120 k px-clocks (~25%), *below* the
+     current build.
+9. **Server compatibility verified and documented** (new spec §8, answering the
+   user's turnkey question): protocol/rules/server files are structurally
+   untouched. Only coupling is frame rate — client timers are frame-counted,
+   server's are wall-clock. Measured floors: heartbeat ≥10 fps (600 frames vs
+   `HEARTBEAT_TIMEOUT=60.0`), challenge/block ≥50 fps (client 10 s vs server
+   12.0 s), influence/exchange ≥30 fps. Added **gate G10** (≥55 fps worst-case
+   frame + network poll must survive transitions). Verdict: turnkey, no server
+   change, no protocol bump.
+
+## Remaining
+
+1. **User approval of the spec** — still the open gate. Not yet given.
+2. After approval: invoke `superpowers:writing-plans` to produce the detailed
    implementation plan from the spec, then implement phase-by-phase with the
    gates. Every Saturn subagent dispatch MUST carry the sega-saturn-developer
    skill-binding preamble verbatim (complete-doc-index.md read + RED-firing

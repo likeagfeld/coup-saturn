@@ -1,0 +1,77 @@
+<!-- @dsCard group="Motion" name="Card flip — 12-frame storyboard" subtitle="Distorted-sprite trapezoid collapse, texture swap at midpoint" -->
+<style>
+  .cf-root { font-family: ui-monospace, Consolas, monospace; background:#0c0c14; color:#e8d8b0; padding:24px; }
+  .cf-root h1 { font-size:18px; margin:0 0 4px; color:#ffde4a; letter-spacing:1px; }
+  .cf-root p.lead { font-size:12px; color:#9a8f78; margin:0 0 20px; max-width:680px; line-height:1.5; }
+  .strip { display:flex; gap:6px; flex-wrap:wrap; align-items:flex-start;
+           background:radial-gradient(ellipse at 50% 30%, #1d1d44, #0b0b22);
+           padding:18px 14px; border:1px solid #2a2a38; border-radius:6px; }
+  .fr { width:96px; }
+  .fr .box { height:144px; position:relative; display:flex; align-items:center; justify-content:center; }
+  .fr .quad { width:96px; height:144px; }
+  .back { background:linear-gradient(150deg,#8a2a3e 0%, #5a1828 55%, #33101c 100%); border:0; }
+  .face { background:linear-gradient(150deg,#3a2a52 0%, #241a3a 50%, #12101f 100%); }
+  .edge { background:linear-gradient(90deg,#7b5a21,#ffde4a,#7b5a21); }
+  .fr .lbl { text-align:center; font-size:10px; color:#8a8fa0; margin-top:4px; line-height:1.5; }
+  .fr .lbl b { color:#ffde4a; display:block; font-size:11px; }
+  .fr.swap .lbl b { color:#a5e7a5; }
+  table { border-collapse:collapse; font-size:11px; margin-top:18px; width:100%; max-width:700px; }
+  th, td { border:1px solid #2a2a38; padding:4px 8px; text-align:right; }
+  th { background:#16162a; color:#ce9431; font-weight:normal; text-align:right; }
+  td:first-child, th:first-child { text-align:left; }
+  .note { font-size:11px; color:#9a8f78; line-height:1.6; margin-top:16px; max-width:700px; }
+  .note code { color:#8cb5ff; }
+  .note b { color:#fff; }
+</style>
+<div class="cf-root">
+  <h1>Card Flip — 12-Frame Storyboard</h1>
+  <p class="lead">One <b>distorted sprite</b> command per frame (Comm=0010, four free vertices).
+  The quad collapses toward its centre line, the texture swaps at the edge-on midpoint, then it
+  expands as the opposite face. 12 frames = 200 ms at 60 fps. Card is the existing 48×72
+  <code>CARD_BACK</code> / portrait art — no new textures.</p>
+
+  <div class="strip">
+    <div class="fr"><div class="box"><div class="quad back" style="clip-path:polygon(0% 0%,100% 0%,100% 100%,0% 100%)"></div></div><div class="lbl"><b>f0</b>0° · w48</div></div>
+    <div class="fr"><div class="box"><div class="quad back" style="clip-path:polygon(2.1% 0%,97.9% 2.8%,97.9% 97.2%,2.1% 100%)"></div></div><div class="lbl"><b>f1</b>15° · w46</div></div>
+    <div class="fr"><div class="box"><div class="quad back" style="clip-path:polygon(6.3% 0%,93.7% 5.6%,93.7% 94.4%,6.3% 100%)"></div></div><div class="lbl"><b>f2</b>30° · w42</div></div>
+    <div class="fr"><div class="box"><div class="quad back" style="clip-path:polygon(14.6% 0%,85.4% 8.3%,85.4% 91.7%,14.6% 100%)"></div></div><div class="lbl"><b>f3</b>45° · w34</div></div>
+    <div class="fr"><div class="box"><div class="quad back" style="clip-path:polygon(25% 0%,75% 9.7%,75% 90.3%,25% 100%)"></div></div><div class="lbl"><b>f4</b>60° · w24</div></div>
+    <div class="fr"><div class="box"><div class="quad back" style="clip-path:polygon(37.5% 0%,62.5% 11.1%,62.5% 88.9%,37.5% 100%)"></div></div><div class="lbl"><b>f5</b>75° · w12</div></div>
+    <div class="fr swap"><div class="box"><div class="quad edge" style="clip-path:polygon(49% 0%,51% 11.1%,51% 88.9%,49% 100%)"></div></div><div class="lbl"><b>f6 ▲</b>90° · w1<br>TEXTURE SWAP</div></div>
+    <div class="fr"><div class="box"><div class="quad face" style="clip-path:polygon(37.5% 11.1%,62.5% 0%,62.5% 100%,37.5% 88.9%)"></div></div><div class="lbl"><b>f7</b>105° · w12</div></div>
+    <div class="fr"><div class="box"><div class="quad face" style="clip-path:polygon(25% 9.7%,75% 0%,75% 100%,25% 90.3%)"></div></div><div class="lbl"><b>f8</b>120° · w24</div></div>
+    <div class="fr"><div class="box"><div class="quad face" style="clip-path:polygon(14.6% 8.3%,85.4% 0%,85.4% 100%,14.6% 91.7%)"></div></div><div class="lbl"><b>f9</b>135° · w34</div></div>
+    <div class="fr"><div class="box"><div class="quad face" style="clip-path:polygon(6.3% 5.6%,93.7% 0%,93.7% 100%,6.3% 94.4%)"></div></div><div class="lbl"><b>f10</b>150° · w42</div></div>
+    <div class="fr"><div class="box"><div class="quad face" style="clip-path:polygon(2.1% 2.8%,97.9% 0%,97.9% 100%,2.1% 97.2%)"></div></div><div class="lbl"><b>f11</b>165° · w46</div></div>
+    <div class="fr"><div class="box"><div class="quad face" style="clip-path:polygon(0% 0%,100% 0%,100% 100%,0% 100%)"></div></div><div class="lbl"><b>f12</b>180° · w48</div></div>
+  </div>
+
+  <table>
+    <tr><th>frame</th><th>θ</th><th>half-width hw</th><th>lean dy</th><th>texture</th></tr>
+    <tr><td>0</td><td>0°</td><td>24</td><td>0</td><td>back</td></tr>
+    <tr><td>1</td><td>15°</td><td>23</td><td>2</td><td>back</td></tr>
+    <tr><td>2</td><td>30°</td><td>21</td><td>4</td><td>back</td></tr>
+    <tr><td>3</td><td>45°</td><td>17</td><td>6</td><td>back</td></tr>
+    <tr><td>4</td><td>60°</td><td>12</td><td>7</td><td>back</td></tr>
+    <tr><td>5</td><td>75°</td><td>6</td><td>8</td><td>back</td></tr>
+    <tr><td>6</td><td>90°</td><td><b style="color:#a5e7a5">1 (clamped)</b></td><td>8</td><td><b style="color:#a5e7a5">swap →</b></td></tr>
+    <tr><td>7-12</td><td>105-180°</td><td>6 → 24</td><td>8 → 0</td><td>face</td></tr>
+  </table>
+
+  <p class="note"><b>Vertex assignment</b> (centre <code>cx</code>, top <code>y</code>, card height H=72).
+  0-90°, right edge receding:<br>
+  <code>xa=cx−hw, ya=y · xb=cx+hw, yb=y+dy · xc=cx+hw, yc=y+H−dy · xd=cx−hw, yd=y+H</code><br>
+  90-180°, left edge receding: mirror dy to the A/D pair. <code>hw = (W/2)·|cos θ|</code>,
+  <code>dy = (H·0.12)·|sin θ|</code>.</p>
+
+  <p class="note"><b>Rules honoured:</b> hw clamps to ≥1 so the quad never fully degenerates
+  (coincident vertices are legal — triangle or line — but 1 px keeps the sprite addressable);
+  <code>HSS</code> (CMDPMOD bit 12) may be set on frames 4-8 where reduction is heavy, and is
+  safe here because end codes are already disabled; the card's own gouraud table can ride the
+  same command so the receding edge darkens as it turns. Requires the sprite to be in
+  <b>LUT/RGB colour mode</b> (spec §4.6 item 7) — a colour-bank card cannot be shaded.</p>
+
+  <p class="note"><b>Gate G6</b> asserts quad width ≤2 px at the midpoint frame and full art
+  restored at the final frame; <b>G9</b> asserts the flip actually changes pixels versus a
+  flip-disabled capture.</p>
+</div>

@@ -1,0 +1,86 @@
+<!-- @dsCard group="Motion" name="Transitions — fade, flash, dissolve" subtitle="VDP2 colour-offset ramps and mesh stipple, with frame timings" -->
+<style>
+  .tr-root { font-family: ui-monospace, Consolas, monospace; background:#0c0c14; color:#e8d8b0; padding:24px; }
+  .tr-root h1 { font-size:18px; margin:0 0 4px; color:#ffde4a; letter-spacing:1px; }
+  .tr-root p.lead { font-size:12px; color:#9a8f78; margin:0 0 18px; max-width:680px; line-height:1.5; }
+  .sec { margin:22px 0 8px; font-size:13px; color:#ce9431; text-transform:uppercase; letter-spacing:2px; }
+  .ramp { display:flex; gap:4px; flex-wrap:wrap; }
+  .st { width:64px; }
+  .st .sw { height:56px; border:1px solid #2a2a38; position:relative; overflow:hidden;
+            background-image:radial-gradient(ellipse at 50% 25%, #2b2b6a, #14143a 60%, #0a0a22);
+            background-size:cover; }
+  .st .sw .veil { position:absolute; inset:0; }
+  .st .sw .art { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+                 color:#ffde4a; font-size:9px; letter-spacing:1px; }
+  .st .cap { font-size:9px; color:#8a8fa0; text-align:center; margin-top:3px; line-height:1.4; }
+  .st .cap b { color:#e8d8b0; display:block; }
+  .mesh { background:conic-gradient(#000 90deg, transparent 90deg 180deg, #000 180deg 270deg, transparent 270deg) 0 0/4px 4px; }
+  .note { font-size:11px; color:#9a8f78; line-height:1.6; margin-top:14px; max-width:700px; }
+  .note code { color:#8cb5ff; } .note b { color:#fff; }
+  table { border-collapse:collapse; font-size:11px; margin-top:14px; width:100%; max-width:700px; }
+  th, td { border:1px solid #2a2a38; padding:5px 9px; text-align:left; }
+  th { background:#16162a; color:#ce9431; font-weight:normal; }
+  .warn { border-left:3px solid #f78cad; padding-left:10px; }
+</style>
+<div class="tr-root">
+  <h1>Transitions</h1>
+  <p class="lead">All whole-screen transitions run on <b>VDP2 colour offset</b>, which applies a
+  signed R/G/B offset after colour calculation to every enabled screen at once — background,
+  sprites and text together, with no VDP1 command cost. This is the only mechanism that can fade
+  the text layer, since the 4bpp font is colour-bank data that VDP1 blending cannot touch.</p>
+
+  <div class="sec">Fade to black — 16 frames (267 ms)</div>
+  <div class="ramp">
+    <div class="st"><div class="sw"><div class="art">COUP</div></div><div class="cap"><b>f0</b>k=0</div></div>
+    <div class="st"><div class="sw"><div class="art">COUP</div><div class="veil" style="background:rgba(0,0,0,.19)"></div></div><div class="cap"><b>f3</b>k=−48</div></div>
+    <div class="st"><div class="sw"><div class="art">COUP</div><div class="veil" style="background:rgba(0,0,0,.38)"></div></div><div class="cap"><b>f6</b>k=−96</div></div>
+    <div class="st"><div class="sw"><div class="art">COUP</div><div class="veil" style="background:rgba(0,0,0,.56)"></div></div><div class="cap"><b>f9</b>k=−144</div></div>
+    <div class="st"><div class="sw"><div class="art">COUP</div><div class="veil" style="background:rgba(0,0,0,.75)"></div></div><div class="cap"><b>f12</b>k=−192</div></div>
+    <div class="st"><div class="sw"><div class="veil" style="background:rgba(0,0,0,.94)"></div></div><div class="cap"><b>f15</b>k=−240</div></div>
+    <div class="st"><div class="sw"><div class="veil" style="background:#000"></div></div><div class="cap"><b>f16</b>k=−256<br>HOLD</div></div>
+  </div>
+  <p class="note"><code>slColOffsetA(k,k,k)</code> stepping k by −16/frame, armed with
+  <code>slColOffsetAUse(NBG0ON|NBG1ON|SPRON)</code>. The <b>black hold</b> at f16 is where the
+  128 KB NBG1 scene bitmap is swapped — chunked across the hold frames so
+  <code>coup_tick()</code> keeps polling the network (spec §8). Fade-in reverses the ramp.</p>
+
+  <div class="sec">Flash white — challenge resolved (12 frames)</div>
+  <div class="ramp">
+    <div class="st"><div class="sw"><div class="art">COUP</div></div><div class="cap"><b>f0</b>k=0</div></div>
+    <div class="st"><div class="sw"><div class="art">COUP</div><div class="veil" style="background:rgba(255,255,255,.85)"></div></div><div class="cap"><b>f2</b>k=+255</div></div>
+    <div class="st"><div class="sw"><div class="art">COUP</div><div class="veil" style="background:rgba(255,255,255,.55)"></div></div><div class="cap"><b>f5</b>k=+160</div></div>
+    <div class="st"><div class="sw"><div class="art">COUP</div><div class="veil" style="background:rgba(255,255,255,.28)"></div></div><div class="cap"><b>f8</b>k=+80</div></div>
+    <div class="st"><div class="sw"><div class="art">COUP</div></div><div class="cap"><b>f12</b>k=0</div></div>
+  </div>
+  <p class="note">Same register, positive offset: 2 frames up, 10 frames decay. Used on
+  challenge/block resolution and the coup action. Costs nothing in fill rate, so it is safe to
+  fire during the busiest frames.</p>
+
+  <div class="sec">Mesh stipple — card dissolve-out</div>
+  <div class="ramp">
+    <div class="st"><div class="sw"><div class="art">CARD</div></div><div class="cap"><b>f0</b>solid</div></div>
+    <div class="st"><div class="sw"><div class="art">CARD</div><div class="veil mesh"></div></div><div class="cap"><b>f1</b>mesh ON</div></div>
+    <div class="st"><div class="sw"><div class="art">CARD</div><div class="veil mesh"></div><div class="veil" style="background:rgba(0,0,0,.45)"></div></div><div class="cap"><b>f6</b>+offset</div></div>
+    <div class="st"><div class="sw"><div class="veil" style="background:#000"></div></div><div class="cap"><b>f12</b>gone</div></div>
+  </div>
+  <p class="note warn"><b>Honest limitation:</b> mesh (CMDPMOD bit 8) is a <b>fixed 50%
+  checkerboard</b>, not a variable dissolve — it cannot ramp coverage. The dissolve reads as
+  "stipple on, then darken": mesh engages in one frame, and the colour-offset ramp carries the
+  rest. Its virtue is that it costs nothing and works on <i>every</i> colour mode including the
+  colour-bank font, which is why it is the fallback wherever blending is unavailable.</p>
+
+  <div class="sec">Where each is used</div>
+  <table>
+    <tr><th>Moment</th><th>Effect</th><th>Frames</th></tr>
+    <tr><td>Screen change (title ↔ lobby ↔ game ↔ game-over)</td><td>Fade out → scene swap on hold → fade in</td><td>16 + hold + 16</td></tr>
+    <tr><td>Challenge / block resolved</td><td>Flash white</td><td>12</td></tr>
+    <tr><td>Coup action declared</td><td>Flash white + card flip</td><td>12</td></tr>
+    <tr><td>Influence lost</td><td>Card flip to back → mesh stipple → offset out</td><td>12 + 12</td></tr>
+    <tr><td>Player eliminated</td><td>Seat panel to half-luminance (held, not animated)</td><td>1</td></tr>
+  </table>
+
+  <p class="note"><b>Gate G3</b> asserts mean screen luminance sweeps monotonically to zero across
+  the scripted ramp, sampled at ≥5 points — its RED fixture omits <code>SPRON</code> from the
+  offset mask, which leaves sprites lit and breaks monotonicity. <b>Gate G10</b> asserts the
+  network poll still runs every frame through a transition.</p>
+</div>

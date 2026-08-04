@@ -46,11 +46,11 @@
       <b>Gouraud panel + gold border</b><span>Polygon + 8-byte gouraud table (4-corner gradient); Polyline + gouraud for the brass→bronze frame.</span>
       <span class="cost free">write-only — same cost as flat</span></div>
     <div class="cell"><div class="demo"><div class="p-shadow">CARD</div></div>
-      <b>Drop shadow</b><span>Shadow-mode polygon (ccalc=001) offset +8,+8 behind panels/cards. Halves luminance of RGB pixels beneath.</span>
-      <span class="cost hot">6× fill on covered px — card-sized only</span></div>
+      <b>Depth / drop shadow</b><span>Opaque dark polygon offset +3,+3 drawn <i>before</i> the panel. True shadow-mode (ccalc=001) only where it lands on other VDP1 content — over the VDP2 background it is a no-op.</span>
+      <span class="cost free">opaque plate: 1×</span></div>
     <div class="cell"><div class="demo"><div class="p-glow">YOUR TURN</div></div>
-      <b>Selection glow</b><span>Half-transparent RGB polygon ring (ccalc=011) around the active seat / focused button.</span>
-      <span class="cost hot">6× fill — ≤8k px per frame</span></div>
+      <b>Selection glow</b><span>Gouraud halo band inside the panel command (amber→panel ramp). Not a translucent overlay: sprite-screen translucency is global on Saturn, so it cannot be applied to one seat.</span>
+      <span class="cost free">gouraud: free</span></div>
     <div class="cell"><div class="demo"><div class="p-dim">ELIMINATED</div></div>
       <b>Dimmed state</b><span>Half-luminance (ccalc=010) redraw of the same sprite — no second texture, no framebuffer read.</span>
       <span class="cost free">cheap</span></div>
@@ -64,4 +64,9 @@
   <p class="lead" style="margin-top:18px"><b style="color:#f78cad">Hard rule (G5):</b> no shadow/glow
   surface may cover text — the 4bpp font is color-bank code (MSB=0), so blends would replace glyphs,
   not shade them. Text fades use VDP2 color offset or mesh instead.</p>
+  <p class="lead"><b style="color:#f78cad">Prerequisite (spec §4.6 item 7):</b> gouraud, half-luminance
+  and half-transparency all require an <b>RGB-code source</b>. Every game sprite is color-bank-16
+  today, so none can be lit as-is. Phase 3 migrates lit sprites to color mode 1 (16-color LUT with
+  RGB entries, 32 B each in VDP1 VRAM) — this frees CRAM banks 16-24 and is what makes the lighting
+  pass possible at all. Gate <b>G9</b> catches any effect that silently changes nothing.</p>
 </div>

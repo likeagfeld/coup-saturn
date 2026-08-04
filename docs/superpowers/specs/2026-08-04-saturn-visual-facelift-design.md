@@ -110,17 +110,24 @@ gouraud rim-light; menu button = gouraud-gradient polygon + polyline gradient
 border; subtle sine line-scroll shimmer on NBG1 (`slLineScrollTable` animation,
 sample-proven SEGA2D_1/MAIN.C:40-63).
 
-**Lobby** — `Waiting_Room2.png` background; player slots as gouraud panels
-with VDP1 shadow-mode drop shadows; ready pulse via palette cycling on the
-slot's CRAM bank.
+**Lobby** — `Waiting_Room2.png` background. **The art already contains painted
+P1–P8 slot frames and the three button plates**, so VDP1 does not redraw that
+chrome: the CUI layout is calibrated to the art's measured pixel regions
+(Phase 1 deliverable) and VDP1 draws only the *fill/state* inside each frame —
+a gouraud wash for occupied slots, half-luminance for empty ones. Ready pulse =
+palette cycling on the slot's CRAM bank.
 
-**Game** — `gamescreen.png` table background; seats = gradient panels + drop
-shadows; **card reveal/loss = distorted-sprite Y-axis flip** (collapse B→A,
-C→D over ~12 frames, then swap texture and expand — ST-013-R3 §7.6, samples
+**Game** — `gamescreen.png` table background; seats = gouraud panels whose
+gradient itself carries the depth cue (light at upper-left → dark at
+lower-right), with an optional opaque dark plate offset +3,+3 drawn *before*
+the panel where more separation is wanted; **card reveal/loss =
+distorted-sprite Y-axis flip** (trapezoid collapse to the centre line over
+12 frames, texture swap at the midpoint, then expand — ST-013-R3 §7.6, samples
 S_4_3_1/2); influence-loss = card flip to back + mesh-dissolve out; timer bar
 = gouraud gradient that shifts green→amber→red; coin payouts = zoom-point
-scaled sprite pop (ZP=0xA center anchor); current-turn seat gets a
-half-transparent RGB glow polygon (small area — see fill budget).
+scaled sprite pop (ZP=0xA centre anchor); current-turn seat is marked by a
+**gouraud halo band drawn as part of the panel** (opaque, amber→panel-colour
+ramp) — not a translucent overlay, for the reason in §4.6 items 7–8.
 
 **Game over** — `winscreen.png`/game-over art via the NBG1 bitmap path
 (retires the 7-strip VDP1 hack); winner portrait scaled up with gouraud
@@ -136,8 +143,8 @@ together (ST-058-R2 §13.1). Flash-white for challenge results (+k ramp).
 |---|---|---|---|
 | Gradient panels | Untextured polygon + gouraud table | +8 B VRAM/style; write-only mode, **no fill-rate penalty** (ST-013-R3 txt:4070-4074) | SMPSPR20.C:219-245 |
 | Gouraud-lit sprites | RGB-mode textured cmd, ccalc=100, CMDGRDA | same | SMPSPR20.C:177-189 |
-| Drop shadows | ccalc=001 shadow polygon | **6× fill cost** on covered px (txt:4048-4051) — restrict to card/panel-sized areas | SMPSPR20.C:164-175 |
-| Selection glow | Half-transparent RGB polygon (ccalc=011) | **6× fill cost** (txt:4066-4068); ≤ ~8 k px/frame each | SMPSPR20.C:135-147 |
+| Depth / drop shadow | Opaque dark polygon offset +3,+3 drawn before the panel (default), **or** ccalc=001 shadow polygon where it lands on other VDP1 RGB content | opaque plate: 1× · shadow mode: **6×**, and a **no-op over transparent framebuffer** (§4.6 item 8) | txt:4026-4051; SMPSPR20.C:164-175 |
+| Selection glow | Gouraud halo band inside the panel command (amber→panel ramp). True half-transparency (ccalc=011) only where it overlaps opaque VDP1 RGB content | gouraud: free · half-trans: **6×**, ≤ ~8 k px/frame | txt:4058-4074; SMPSPR20.C:135-147 |
 | Card flips | Distorted sprite quad | ~1× fill of quad area | ST-013-R3 §7.6; S_4_3_1/2 |
 | Mesh dissolve | CMDPMOD bit 8 | free; works on palette text too | txt:3538-3554 |
 | Dim/disable art | Half-luminance (ccalc=010) | no FB read — cheap | txt:4053-4056 |
@@ -151,10 +158,16 @@ together (ST-058-R2 §13.1). Flash-white for challenge results (+k ramp).
 Draw rate is 1 px/28.6 MHz clock → ~477 k px-clocks/frame at 60 fps
 (ST-013-R3 txt:1114-1115). Today the game burns ~72 k on the full-screen
 background rect alone plus ~10-30 k UI. Moving backgrounds to VDP2 **refunds**
-that 72 k. New spends: gouraud panels ≈ old flat-panel cost (write-only);
-shadows/glows at 6× budgeted ≤ 60 k px-clocks total (≈10 k blended px);
-flips ≈ 4 k. Projected total ≤ 150 k px-clocks — under 35% of budget, with the
-BEF transfer-over gate (below) enforcing it empirically.
+that 72 k.
+
+After the §4.6 corrections the facelift is dominated by 1× work: gouraud panels,
+halos and gradient borders cost the same as today's flat rectangles (gouraud is
+write-only, txt:4070-4074); opaque shadow plates are ordinary polygons; flips
+are one quad each (≈4 k). The only 6× spend left is optional panel-over-panel
+half-transparency, capped at **≤ 8 k blended px/frame (≈48 k px-clocks)**.
+Projected total ≤ 120 k px-clocks — about 25% of budget, and *lower than the
+current build* because of the background refund. Gate G4 (BEF transfer-over +
+true-vblank fps) enforces this empirically rather than by arithmetic.
 
 ### 4.5 Memory plan
 
@@ -219,6 +232,35 @@ resident. This is a measurement-gated decision, not an assumption.
    (ST-013-R3 precautions 6847-6848) — the zoom animation clamps at 0.
 6. **END command must stay reachable every frame** (txt:2335-2350) or the
    flush spin-wait deadlocks — effect code never rewrites `ctrl` link fields.
+7. **Gouraud / half-luminance / half-transparency require an RGB-code source**
+   — colour-bank results "cannot be guaranteed" (txt:2739-2743, 3950-3959).
+   Every game sprite today is colour-bank-16 (`SATURN_VDP1_SPR_PMOD`,
+   `saturn_vdp1.h:107`), so **no sprite can be gouraud-lit as-is.** Any sprite
+   receiving gouraud/half-lum (portraits, card faces, logo, coins) migrates to
+   **colour mode 1 (16-colour LUT)** with RGB555 entries, MSB=1: 32 bytes per
+   palette, 32-byte aligned, not at address 0 (txt:2641-2644), CMDCOLR = LUT
+   address/8. Cost ≈ 14 × 32 B = 448 B of VDP1 VRAM, and it *frees* CRAM banks
+   16-24. Untouched sprites stay colour-bank. This is a Phase 3 deliverable,
+   not an optional extra — the headline lighting effects depend on it.
+   The 4bpp **font** stays colour-bank in v1 (text is never lit; see item 1).
+8. **Shadow and half-transparency read the framebuffer, so they do nothing
+   over the VDP2 background.** Both act only where the framebuffer pixel has
+   MSB=1, i.e. where earlier VDP1 RGB content was drawn; MSB=0 (the transparent
+   erase colour, which is what reveals NBG1) is left untouched by shadow and
+   *replaced* by half-transparency (txt:4026-4041, 4058-4063). A drop shadow
+   cast onto the painted table is therefore a **no-op**, and a translucent glow
+   over it turns **opaque**. Hence the opaque-plate and gouraud-halo designs
+   in §4.2/§4.3.
+9. **VDP1 blending ≠ VDP2 blending, and sprite-screen colour calculation is
+   global.** To blend the whole VDP1 output over VDP2 layers you must use
+   VDP2 sprite colour calculation (`slColorCalcOn(SPRON)` +
+   `slSpriteCCalcCond(CC_MSB)` + `slColRateSpr0`) — but RGB-format sprite
+   pixels carry no priority/CC bits and therefore **always use sprite priority
+   register 0 and CC ratio register 0** (ST-058-R2 txt:8575-8576, 8628-8629).
+   There is no per-command translucency against the background: enabling it
+   makes *every* sprite translucent. v1 therefore leaves sprite-screen colour
+   calculation **off**, and reserves it as a deliberate whole-screen effect
+   (e.g. a dimmed table behind a modal) if a later phase wants it.
 
 ---
 
@@ -239,6 +281,14 @@ rule). Gates run per phase in a `verify_facelift` script.
 | G6 flip geometry | card-flip midpoint frame: quad width ≤ 2 px at frame N/2, full art restored at frame N | skip the degenerate-quad clamp |
 | G7 gouraud address | static analyzer over the frame's command buffer: every nonzero CMDGRDA×8 falls inside the reserved pool, 8-byte aligned | point one table into the command-slot region |
 | G8 binary/WRAM | linker map: `_end` + stack headroom vs 0x060FFC00; ISO boots to title in Mednafen | embed all four bitmaps (expected overflow) |
+| G9 effect-efficacy | for each declared effect, capture the same frame with the effect enabled vs disabled; the pixel delta in the effect's own region must exceed a threshold (an effect that changes nothing has silently failed) | apply gouraud to a colour-bank sprite (the pre-migration state) — delta is zero, gate fires RED |
+
+G9 exists because this spec's own review found three effects that would have
+compiled, run, and produced **no visible change**: gouraud on colour-bank
+sprites, shadow cast onto the transparent framebuffer, and translucency over
+the VDP2 background (§4.6 items 7-9). "It builds and looks unchanged" is the
+failure mode this class of work produces; G9 is the gate that catches it
+mechanically instead of by eye.
 
 Per skill gotcha #4: G2/G3/G5/G6 are rendered-frame measures because the
 symptoms are visual; register/memory reads are only used where the question is
@@ -253,12 +303,19 @@ register/memory-shaped (G1, G7, G8).
   `verify_facelift` with G4/G8 live. *(No visual change.)*
 - **Phase 1 — VDP2 background stack:** asset converter (PNG → 8bpp bitmap +
   shared 256-color palette), NBG1 bitmap path, cycle pattern, scene-swap under
-  fade, game-over strip retirement. Gates G1/G2/G8.
+  fade, game-over strip retirement, **and layout calibration**: measure the
+  painted UI regions in `Waiting_Room2.png` (P1–P8 slot frames, three button
+  plates) and `gamescreen.png` (header/log/hand divisions) and align the CUI
+  layout constants to them, so drawn UI lands inside the painted chrome instead
+  of fighting it. Gates G1/G2/G8 + a region-alignment capture diff.
 - **Phase 2 — Fade/transition module:** color-offset ramps, mesh dissolve,
   flash. Gate G3.
-- **Phase 3 — VDP1 lighting pass:** gouraud pool + gradient panels/borders,
-  drop shadows, glows, half-lum dimming; render-code migration from flat
-  `panel()` to styled panel API. Gates G4/G5/G7.
+- **Phase 3 — VDP1 lighting pass:** **sprite palette migration to LUT/RGB mode
+  first** (§4.6 item 7 — prerequisite for every lit effect, verified by a
+  colour-fidelity capture diff against the pre-migration frame), then the
+  gouraud table pool + gradient panels/borders/halos, opaque shadow plates,
+  half-lum dimming; render-code migration from flat `panel()` to a styled panel
+  API. Gates G4/G5/G7 + G9 (below).
 - **Phase 4 — Card & object animation:** distorted-sprite flips, zoom-point
   coin/portrait pops, timer-bar gradient states. Gate G6.
 - **Phase 5 — Screen-by-screen polish:** title shimmer, lobby pulse,
@@ -280,9 +337,61 @@ per methodology v2.5.0.
 | WRAM/binary overflow from embedded art | G8; CD-loading path decided by Phase 0 measurement |
 | CRAM shared-palette quality too low across 4 scenes | quantizer quality report in converter; fallback = CRAM mode 1 (2048 colors), gate-verified |
 | Scene-swap upload visible | swap only during full-black fade hold (G3 verifies black) |
+| Frame-rate drop erodes client/server timer slack (§8) | G10 frame-rate floor ≥55 fps on the worst-case frame; fill budget projected *below* current build |
+| Scene-swap copy stalls the network poll | copy chunked across fade frames; `coup_tick()` must run every frame during transitions |
 | slPriority renumbering regressions | Phase 1 capture-diff on all screens before any effect work |
 
-## 8. Citations index
+## 8. Server & Protocol Compatibility (turnkey requirement)
+
+**Requirement: the existing server, bridge, bot, and web client must run
+unmodified against a faceflifted Saturn client.** Verified against the code,
+not assumed:
+
+**Untouched by this work.** The facelift changes only `pal/saturn/*` (rendering),
+`examples/coup/coup_render.c`, `examples/coup/coup_ui.h` layout constants, and
+asset data. It does not touch `coup_protocol.h` (SNCP wire format),
+`coup_rules.c` (the shared engine the server loads as `libcoup_rules.so`),
+`coup_game.c` (state machine / message handlers), or the transport. No message
+is added, removed, or re-encoded; no rule or seed behaviour changes. Rendering
+never serialises anything. **Protocol compatibility is therefore structural,
+not merely tested.**
+
+**The one real coupling is frame rate**, because several client timers are
+frame-counted while the server's are wall-clock. Measured margins:
+
+| Timer | Client (frames @60 fps) | Server (wall-clock) | Frame-rate floor to stay correct |
+|---|---|---|---|
+| Heartbeat | 600 frames = 10 s (`coup_game.c:31`) | `HEARTBEAT_TIMEOUT = 60.0` (`server.py:71`) | **≥ 10 fps** (6× margin) |
+| Challenge / block | 10 s (`coup.h:34-35`) | 12.0 s (`server.py:109-110`) | **≥ 50 fps** |
+| Influence / exchange | 15 s (`coup.h:36-37`) | 30.0 s (`server.py:111-112`) | **≥ 30 fps** |
+
+The client windows are already deliberately shorter than the server's, so the
+displayed bar expires *before* the server acts — the existing design has slack
+built in. A sustained frame-rate drop stretches the client's countdown in
+wall-clock terms and erodes that slack; the binding constraint is the
+challenge/block pair at **50 fps**. Disconnection (heartbeat) needs a
+catastrophic drop below 10 fps and is not a realistic risk.
+
+This is comfortably satisfied: §4.4 projects total VDP1 fill *lower than the
+current build* because moving the full-screen background to VDP2 refunds
+~72 k px-clocks/frame. Two things are nonetheless gated:
+
+- **G10 frame-rate floor** — scripted worst-case game frame (max players, all
+  effects, mid-flip) must sustain ≥ 55 fps true-vblank, with the RED fixture
+  being a deliberately unbudgeted full-screen half-transparency pass. This gate
+  is the server-compatibility contract expressed as a measurement.
+- **Scene-swap stall** — the 128 KB NBG1 bitmap copy is the only long operation
+  introduced. It runs only during screen transitions, is spread across the
+  black-hold frames of the fade, and must keep `coup_tick()` (network RX/heartbeat)
+  running each frame. Phase 0 measures the real copy rate; if a single-frame
+  copy would exceed the budget it is chunked. No transition may block the
+  network poll.
+
+**Net answer: turnkey.** No server, bridge, bot, or web-client change is
+required, and no protocol version bump. The facelift is a client-side
+presentation change bounded by a frame-rate contract that G10 enforces.
+
+## 9. Citations index
 
 ST-013-R3 (VDP1 manual, .txt line refs above); ST-058-R2 (VDP2 manual, .txt
 line refs; Table 3.3 resolved from HTML p.52 — PDF-derived source wins over
