@@ -78,3 +78,28 @@ CUI_TEST(gouraud_slot_addr_clamps_out_of_range)
     CUI_ASSERT_EQ(saturn_vdp1_gouraud_slot_addr(SATURN_VDP1_GRD_MAX - 1),
                   saturn_vdp1_gouraud_slot_addr(SATURN_VDP1_GRD_MAX + 99));
 }
+
+/*
+ * RGB-code marker.
+ *
+ * VDP1 writes a polygon's colour straight into the frame buffer, and VDP2
+ * reads each pixel as an RGB code only when bit 15 is set; with MSB=0 it
+ * treats the value as a palette index into CRAM (ST-013-R3 2.1).
+ *
+ * MEASURED: omitting the bit rendered brass frames as pale grey and produced
+ * a band of pure yellow over the portraits, because VDP2 was indexing CRAM
+ * with the colour value. A savestate CRAM dump contained no such colour,
+ * which is what ruled out a palette fault.
+ */
+CUI_TEST(polygon_colour_is_marked_as_rgb_code)
+{
+    saturn_vdp1_cmd_t cmd;
+
+    saturn_vdp1_encode_polygon(&cmd, 0, 0, 16, 16, 0x2063);
+    CUI_ASSERT_EQ(0xA063, cmd.colr);
+    CUI_ASSERT(cmd.colr & 0x8000);
+
+    /* Already-marked colours must not be corrupted. */
+    saturn_vdp1_encode_polygon(&cmd, 0, 0, 16, 16, 0xA063);
+    CUI_ASSERT_EQ(0xA063, cmd.colr);
+}

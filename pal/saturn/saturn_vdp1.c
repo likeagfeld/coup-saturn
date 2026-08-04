@@ -47,8 +47,19 @@ void saturn_vdp1_encode_polygon(saturn_vdp1_cmd_t* cmd, int x, int y, int w, int
     /* Draw mode: ECD disable + SPD opaque + RGB direct color */
     cmd->pmod = SATURN_VDP1_RECT_PMOD;
 
-    /* Color: RGB555 direct color */
-    cmd->colr = rgb555;
+    /* Colour: RGB555 direct colour.
+     *
+     * Bit 15 MUST be set. VDP1 writes this value straight into the frame
+     * buffer, and VDP2 decides per pixel how to read it: MSB=1 means RGB
+     * code, MSB=0 means a palette code to be looked up in CRAM
+     * (ST-013-R3 section 2.1; VDP2 sprite-data handling).
+     *
+     * MEASURED: without the MSB, the brass frames rendered as pale grey and
+     * a band of pure yellow appeared over the portraits - VDP2 was indexing
+     * CRAM with our colour value rather than displaying it. A CRAM dump
+     * from a savestate contained no 0x03FF entry anywhere, which is what
+     * ruled out a palette bug and pointed here. */
+    cmd->colr = (uint16_t)(rgb555 | 0x8000u);
 
     /* Polygon doesn't use texture, so srca and size are 0 */
     cmd->srca = 0x0000;
