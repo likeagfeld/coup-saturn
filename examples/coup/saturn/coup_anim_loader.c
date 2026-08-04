@@ -29,7 +29,9 @@
  * Sprites: banks 16-24 (9 banks)
  * Gameover: banks 25-31 (7 banks)
  * Animation: banks 32-36 (5 banks, one per character) */
-#define ANIM_CRAM_BASE_BANK  (16 + COUP_SPR_COUNT + GAMEOVER_STRIP_COUNT)
+/* Chained from the game-over loader at load time, not recomputed. */
+static int s_cram_base = 0;
+#define ANIM_CRAM_BASE_BANK  s_cram_base
 
 /*============================================================================
  * State
@@ -51,6 +53,8 @@ void coup_anim_load(void)
     /* Chain directly from where the game-over loader stopped, rather than
      * recomputing the layout from constants. See coup_sprites_vram_end(). */
     uint32_t vram_cursor = (coup_gameover_vram_end() + 7) & ~7;
+
+    s_cram_base = coup_gameover_cram_end_bank();
 
     /* Upload animation frames for each character */
     for (ci = 0; ci < COUP_ANIM_CHARS; ci++) {

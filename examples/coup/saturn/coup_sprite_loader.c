@@ -91,3 +91,8 @@ uint32_t coup_sprites_vram_end(void)
 {
     return s_vram_end;
 }
+
+int coup_sprites_cram_end_bank(void)
+{
+    return SPRITE_CRAM_BASE_BANK + COUP_SPR_COUNT;
+}

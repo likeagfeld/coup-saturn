@@ -42,4 +42,10 @@ bool coup_gameover_loaded(void);
  */
 uint32_t coup_gameover_vram_end(void);
 
+/**
+ * First CRAM 16-colour bank after this loader's palettes.
+ * Valid after coup_gameover_load(). See coup_sprites_cram_end_bank().
+ */
+int coup_gameover_cram_end_bank(void);
+
 #endif /* COUP_GAMEOVER_LOADER_H */

@@ -206,6 +206,24 @@ extern void slPageNbg1(void *cell_adr, void *col_adr, Uint16 data_type);
  * boundary. slBMPaletteNbg1 selects the palette bank in the bitmap's own
  * colour granularity (256-colour banks for COL_TYPE_256).
  */
+/*
+ * Colour offset (SGL 3.02j SL_DEF.H:971-977).
+ *
+ * Adds a signed per-channel offset AFTER colour calculation, to every screen
+ * named in the mask - background, sprites and text together. This is the only
+ * mechanism that can fade the text layer, because the 4bpp font is colour-bank
+ * data that VDP1 blending cannot touch (ST-013-R3: half-transparency and
+ * shadow act only on framebuffer pixels whose MSB is set).
+ *
+ * Range is -256..+255 per channel. slColOffsetAUse arms set A for the named
+ * screens and enables it in one call.
+ */
+extern void slColOffsetA(Sint16 r, Sint16 g, Sint16 b);
+extern void slColOffsetB(Sint16 r, Sint16 g, Sint16 b);
+extern void slColOffsetAUse(Uint16 screens);
+extern void slColOffsetBUse(Uint16 screens);
+extern void slColOffsetOn(Uint16 screens);
+
 extern void slBitMapNbg1(Uint16 col_type, Uint16 bm_size, void *bm_adr);
 extern void slBMPalette(Uint16 screen, Uint16 pal);
 

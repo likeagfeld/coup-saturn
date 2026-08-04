@@ -51,4 +51,13 @@ bool coup_sprites_loaded(void);
  */
 uint32_t coup_sprites_vram_end(void);
 
+/**
+ * First CRAM 16-colour bank after this loader's palettes.
+ *
+ * CRAM banks are chained for the same reason VRAM offsets are: recomputing a
+ * base from constants duplicates the arithmetic in every loader, and one of
+ * them will eventually disagree. Valid after coup_sprites_load().
+ */
+int coup_sprites_cram_end_bank(void);
+
 #endif /* COUP_SPRITE_LOADER_H */

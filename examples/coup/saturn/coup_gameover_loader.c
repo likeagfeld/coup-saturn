@@ -23,7 +23,9 @@
 /* Game over strip palettes start after sprite palettes.
  * Sprites use banks 16-24 (9 banks for COUP_SPR_COUNT sprites).
  * Gameover strips use banks 25-31 (7 banks). */
-#define GAMEOVER_CRAM_BASE_BANK  (16 + COUP_SPR_COUNT)
+/* Chained from the sprite loader at load time, not recomputed. */
+static int s_cram_base = 0;
+#define GAMEOVER_CRAM_BASE_BANK  s_cram_base
 
 /*============================================================================
  * State
@@ -43,6 +45,8 @@ void coup_gameover_load(void)
     int i;
     /* Chain directly from where the sprite loader stopped. */
     uint32_t vram_cursor = (coup_sprites_vram_end() + 7) & ~7;
+
+    s_cram_base = coup_sprites_cram_end_bank();
 
     for (i = 0; i < GAMEOVER_STRIP_COUNT; i++) {
         uint16_t data_size = gameover_strip_sizes[i];
@@ -94,4 +98,9 @@ bool coup_gameover_loaded(void)
 uint32_t coup_gameover_vram_end(void)
 {
     return s_vram_end;
+}
+
+int coup_gameover_cram_end_bank(void)
+{
+    return s_cram_base + GAMEOVER_STRIP_COUNT;
 }

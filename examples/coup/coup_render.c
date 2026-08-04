@@ -26,6 +26,7 @@
 #include "coup_anim_loader.h"
 #include "coup_anim_sprites.h"
 #include "saturn_pal.h"          /* cui_saturn_font_set_active */
+#include "saturn_fade.h"
 #endif
 
 /*============================================================================
@@ -1734,6 +1735,24 @@ static void coup_render_game_over(const coup_state_t* st)
 void coup_render_screen(const coup_state_t* st)
 {
     if (!st) return;
+
+#ifdef __SATURN__
+    /* Fade each new screen in from black.
+     *
+     * VDP2 colour offset dims the backdrop, the sprites and the text together
+     * and costs no VDP1 commands, so it is safe to run on any frame. Only a
+     * fade-IN is driven here: fading out would have to delay the screen change
+     * itself, which would mean holding up input and the network poll. */
+    {
+        static int s_last_screen = -1;
+
+        if ((int)st->screen != s_last_screen) {
+            s_last_screen = (int)st->screen;
+            saturn_fade_start(SATURN_FADE_BLACK, SATURN_FADE_NONE, 12, false);
+        }
+        saturn_fade_tick();
+    }
+#endif
 
     /* Begin frame with dark background */
     CUI_DISPLAY()->begin_frame(COUP_BG_DARK);
