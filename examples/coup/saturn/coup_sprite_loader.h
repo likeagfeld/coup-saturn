@@ -13,6 +13,7 @@
 #define COUP_SPRITE_LOADER_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /* Sprite indices (from coup_sprites.h) */
 #include "coup_sprites.h"
@@ -37,5 +38,17 @@ bool coup_sprites_draw(int sprite_id, int x, int y);
  * Check if sprites have been loaded.
  */
 bool coup_sprites_loaded(void);
+
+/**
+ * Byte offset (within the VDP1 texture area) just past this loader's data.
+ *
+ * Loaders must CHAIN their allocations. Recomputing a base from constants such
+ * as SATURN_VDP1_APP_TEX_START + COUP_SPR_TOTAL_SIZE silently assumes exactly
+ * one registered font, and breaks the moment another is added: the sprites
+ * move up and the later loaders overwrite them.
+ *
+ * Valid only after coup_sprites_load().
+ */
+uint32_t coup_sprites_vram_end(void);
 
 #endif /* COUP_SPRITE_LOADER_H */

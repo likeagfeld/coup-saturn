@@ -25,6 +25,7 @@
 #include "coup_gameover_loader.h"
 #include "coup_anim_loader.h"
 #include "coup_anim_sprites.h"
+#include "saturn_pal.h"          /* cui_saturn_font_set_active */
 #endif
 
 /*============================================================================
@@ -134,6 +135,31 @@ static int char_to_sprite(int character)
 #endif
 
 #ifdef __SATURN__
+/**
+ * Draw an opaque framed medallion behind an animated portrait.
+ *
+ * The portrait sprites are cut-outs, and their source art fades to black at
+ * the bottom, so 56-74% of each sprite is transparent (MEASURED per character).
+ * That was invisible while the backdrop was flat black, but over the painted
+ * VDP2 background the characters lose their torsos and the damask shows
+ * straight through them. An opaque backing removes the problem entirely and
+ * reads as a framed portrait, which suits a game about court intrigue.
+ *
+ * Two VDP1 polygons per portrait: a brass rectangle and an inset fill, which
+ * leaves a 2 px frame. Cheaper than drawing four separate edges, and at
+ * 64x96 that is 12,288 px of fill per portrait.
+ *
+ * The frame is 2 px rather than 1 because a single-pixel edge does not survive
+ * being scaled: the emulator renders into a 704-wide canvas and the capture is
+ * area-downsampled back to 320, which blends a 1 px line into its neighbours
+ * until the brass reads as grey. It is also simply more legible on a CRT.
+ */
+static void portrait_medallion(int x, int y, int w, int h)
+{
+    panel(x, y, w, h, COUP_FRAME_BRASS);
+    panel(x + 2, y + 2, w - 4, h - 4, COUP_PORTRAIT_BG);
+}
+
 /** Draw a row of background tiles across the screen width.
  *  10 tiles at 32px each = 320px. Uses 10 VDP1 commands. */
 static void draw_bg_row(int y)
@@ -195,6 +221,7 @@ static void coup_render_title(const coup_state_t* st)
 
             /* Staggered animation: each character at different phase */
             frame = (st->frame_count / 8 + i * 5) % COUP_ANIM_FRAMES;
+            portrait_medallion(screen_x, L->portrait_y, 64, 96);
             coup_anim_draw_scaled(i, frame, screen_x, L->portrait_y, 64, 96);
         }
     } else if (coup_sprites_loaded()) {
@@ -239,11 +266,34 @@ static void coup_render_title(const coup_state_t* st)
 #endif
 
     /* Single centered "Play" button */
+#ifdef __SATURN__
+    {
+        /* Brass-framed plate with the 16x16 display face. PLAY is 4 glyphs at
+         * 16 px, so the plate is sized from the glyph metrics rather than the
+         * 8x8 body font's. */
+        const int label_w = 4 * 16;
+        const int label_h = 16;
+        const int pad_x = 10, pad_y = 4;
+        int bw = label_w + pad_x * 2;
+        int bh = label_h + pad_y * 2;
+        int bx = (COUP_SCREEN_W - bw) / 2;
+        int by = L->menu_y - pad_y;
+
+        panel(bx, by, bw, bh, COUP_FRAME_BRASS);
+        panel(bx + 2, by + 2, bw - 4, bh - 4, COUP_PANEL_SELECT);
+
+        cui_saturn_font_set_active(COUP_FONT_DISPLAY);
+        CUI_DISPLAY()->draw_text_sprite(bx + pad_x, by + pad_y, "PLAY",
+                                        COUP_TEXT_GOLD);
+        cui_saturn_font_set_active(COUP_FONT_BODY);
+    }
+#else
     {
         int play_x = (COUP_SCREEN_W - 32) / 2;  /* center "Play" (4 chars * 8px) */
         panel(play_x - 8, L->menu_y - 2, 48, 12, COUP_PANEL_SELECT);
         CUI_DISPLAY()->draw_text_sprite(play_x, L->menu_y, "Play", COUP_TEXT_GREEN);
     }
+#endif
 
     /* Bottom bar hint: [R] Rules centered */
     draw_at((COUP_SCREEN_W / COUP_FONT_ADVANCE - 8) / 2, L->hint_row, "[R]Rules", COUP_TEXT_GRAY);
@@ -1446,6 +1496,7 @@ static void render_your_hand(const coup_state_t* st)
 #ifdef __SATURN__
         if (coup_anim_loaded() && c0 < COUP_NUM_CHARACTERS) {
             int frame = (st->frame_count / 8 + c0 * 5) % COUP_ANIM_FRAMES;
+            portrait_medallion(H->card0_x, H->card0_y, 32, 48);
             coup_anim_draw(c0, frame, H->card0_x, H->card0_y);
         } else {
             uint32_t color = (c0 < COUP_NUM_CHARACTERS) ? coup_card_color(c0) : COUP_PANEL_MID;
@@ -1469,6 +1520,7 @@ static void render_your_hand(const coup_state_t* st)
 #ifdef __SATURN__
         if (coup_anim_loaded() && c1 < COUP_NUM_CHARACTERS) {
             int frame = (st->frame_count / 8 + c1 * 5) % COUP_ANIM_FRAMES;
+            portrait_medallion(H->card1_x, H->card1_y, 32, 48);
             coup_anim_draw(c1, frame, H->card1_x, H->card1_y);
         } else {
             uint32_t color = (c1 < COUP_NUM_CHARACTERS) ? coup_card_color(c1) : COUP_PANEL_MID;

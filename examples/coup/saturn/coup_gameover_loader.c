@@ -13,6 +13,7 @@
 #include "coup_gameover_loader.h"
 #include "coup_gameover_data.h"
 #include "coup_sprites.h"
+#include "coup_sprite_loader.h"
 #include "saturn_vdp1.h"
 
 /*============================================================================
@@ -30,6 +31,7 @@
 
 /* VDP1 VRAM offsets for each strip's texture data */
 static uint32_t s_strip_tex_offsets[GAMEOVER_STRIP_COUNT];
+static uint32_t s_vram_end = 0;
 static bool s_loaded = false;
 
 /*============================================================================
@@ -39,8 +41,8 @@ static bool s_loaded = false;
 void coup_gameover_load(void)
 {
     int i;
-    /* Start after font + sprite data (8-byte aligned) */
-    uint32_t vram_cursor = (SATURN_VDP1_APP_TEX_START + COUP_SPR_TOTAL_SIZE + 7) & ~7;
+    /* Chain directly from where the sprite loader stopped. */
+    uint32_t vram_cursor = (coup_sprites_vram_end() + 7) & ~7;
 
     for (i = 0; i < GAMEOVER_STRIP_COUNT; i++) {
         uint16_t data_size = gameover_strip_sizes[i];
@@ -59,6 +61,7 @@ void coup_gameover_load(void)
         vram_cursor += (data_size + 7) & ~7;
     }
 
+    s_vram_end = vram_cursor;
     s_loaded = true;
 }
 
@@ -86,4 +89,9 @@ bool coup_gameover_draw(void)
 bool coup_gameover_loaded(void)
 {
     return s_loaded;
+}
+
+uint32_t coup_gameover_vram_end(void)
+{
+    return s_vram_end;
 }

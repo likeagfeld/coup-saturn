@@ -14,6 +14,7 @@
 #define COUP_GAMEOVER_LOADER_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /**
  * Load game over background strip data into VDP1 VRAM and palettes to CRAM.
@@ -34,5 +35,11 @@ bool coup_gameover_draw(void);
  * Check if game over background has been loaded.
  */
 bool coup_gameover_loaded(void);
+
+/**
+ * Byte offset just past this loader's data. Valid after coup_gameover_load().
+ * See coup_sprites_vram_end() for why loaders chain rather than recompute.
+ */
+uint32_t coup_gameover_vram_end(void);
 
 #endif /* COUP_GAMEOVER_LOADER_H */

@@ -18,7 +18,8 @@
 #include "saturn_vdp1.h"
 
 /* Include gameover data for VRAM offset calculation */
-#include "coup_gameover_data.h"
+#include "coup_gameover_data.h"    /* GAMEOVER_STRIP_COUNT for the CRAM bank base */
+#include "coup_gameover_loader.h"  /* coup_gameover_vram_end() */
 
 /*============================================================================
  * CRAM Bank Assignment
@@ -47,21 +48,9 @@ void coup_anim_load(void)
 {
     int ci, fi;
 
-    /* Calculate VRAM cursor: start after font + sprites + gameover strips.
-     * This mirrors how coup_gameover_loader.c calculates its start. */
-    uint32_t vram_cursor;
-    uint32_t gameover_total;
-    int i;
-
-    /* Start after existing sprites (same as gameover loader does) */
-    vram_cursor = (SATURN_VDP1_APP_TEX_START + COUP_SPR_TOTAL_SIZE + 7) & ~7;
-
-    /* Skip past gameover strip data */
-    gameover_total = 0;
-    for (i = 0; i < GAMEOVER_STRIP_COUNT; i++) {
-        gameover_total += (gameover_strip_sizes[i] + 7) & ~7;
-    }
-    vram_cursor += gameover_total;
+    /* Chain directly from where the game-over loader stopped, rather than
+     * recomputing the layout from constants. See coup_sprites_vram_end(). */
+    uint32_t vram_cursor = (coup_gameover_vram_end() + 7) & ~7;
 
     /* Upload animation frames for each character */
     for (ci = 0; ci < COUP_ANIM_CHARS; ci++) {

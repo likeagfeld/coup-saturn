@@ -24,6 +24,8 @@
 
 /* Saturn PAL + CUI */
 #include "saturn_pal.h"
+#include "saturn_font.h"
+#include "fonts/saturn_font_alagard_16x16.h"
 #include "cui_layout.h"
 
 /* SGL declarations */
@@ -221,6 +223,18 @@ void main(void)
     }
 
     slTVOn();
+
+    /* ---- Register the display font ----
+     * The PAL registers the built-in 8x8 face as index 0 (COUP_FONT_BODY).
+     * Alagard is a 16x16 medieval face that suits the game's Royal Court look
+     * and is used for headings and buttons (COUP_FONT_DISPLAY = 1).
+     * Registration order defines those indices, so this must stay first. */
+    {
+        saturn_font_desc_t display_font;
+        saturn_font_alagard_16x16_desc(&display_font);
+        cui_saturn_font_register(&display_font);
+        cui_saturn_font_upload_all();
+    }
 
     /* ---- Load sprite assets into VDP1 VRAM ---- */
     coup_sprites_load();

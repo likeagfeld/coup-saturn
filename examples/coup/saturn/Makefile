@@ -94,12 +94,14 @@ SRCS += $(PAL_SATURN)/saturn_vdp2.c
 SRCS += $(PAL_SATURN)/saturn_font.c
 SRCS += $(PAL_SATURN)/saturn_vdp1.c
 SRCS += $(PAL_SATURN)/saturn_bg.c
+# Display font used for headings and buttons (COUP_FONT_DISPLAY).
+SRCS += $(PAL_SATURN)/fonts/saturn_font_alagard_16x16.c
 
 # Object files in build subdirectory
 OBJS = $(addprefix $(BUILD)/,$(notdir $(SRCS:.c=.o)))
 
 # Tell make where to find .c files (all basenames are unique)
-vpath %.c . $(COUP_SHARED) $(CORE_SRC) $(PAL_SATURN)
+vpath %.c . $(COUP_SHARED) $(CORE_SRC) $(PAL_SATURN) $(PAL_SATURN)/fonts
 
 # Targets
 TARGET = $(BUILD)/game.elf

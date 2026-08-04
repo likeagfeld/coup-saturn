@@ -32,6 +32,7 @@
 
 /* VDP1 VRAM offsets for each sprite's texture data (from VDP1 base) */
 static uint32_t s_tex_offsets[COUP_SPR_COUNT];
+static uint32_t s_vram_end = 0;
 static bool s_loaded = false;
 
 /*============================================================================
@@ -61,6 +62,7 @@ void coup_sprites_load(void)
         vram_cursor += (info->data_size + 7) & ~7;
     }
 
+    s_vram_end = vram_cursor;
     s_loaded = true;
 }
 
@@ -83,4 +85,9 @@ bool coup_sprites_draw(int sprite_id, int x, int y)
 bool coup_sprites_loaded(void)
 {
     return s_loaded;
+}
+
+uint32_t coup_sprites_vram_end(void)
+{
+    return s_vram_end;
 }

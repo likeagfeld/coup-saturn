@@ -60,6 +60,21 @@
 #define COUP_PANEL_MY_TURN   0x142814FF   /* Dark green status bar (my turn) */
 #define COUP_PANEL_REF_BG    0x0C0C24FF   /* Reference card overlay bg */
 
+/* Portrait medallion (Royal Court palette, docs/design/foundations/palette.html).
+ * The animated portraits are cut-outs whose source art fades to black at the
+ * bottom, so 56-74% of each sprite is transparent (MEASURED). Over the painted
+ * VDP2 backdrop they lose their bodies, so each one is drawn on an opaque
+ * framed medallion. */
+#define COUP_FRAME_BRASS     0xCE9431FF   /* Portrait frame, lit edge */
+#define COUP_FRAME_BRONZE    0x7B5A21FF   /* Portrait frame, shadowed edge */
+#define COUP_PORTRAIT_BG     0x1C1C40FF   /* Portrait medallion fill */
+
+/* Font registry indices. The Saturn PAL registers the built-in 8x8 face first,
+ * so it is always 0; main_saturn.c registers the 16x16 display face next.
+ * Kept together here so the two files cannot drift apart. */
+#define COUP_FONT_BODY       0
+#define COUP_FONT_DISPLAY    1
+
 /*============================================================================
  * Game Screen Layout Anchors
  *
