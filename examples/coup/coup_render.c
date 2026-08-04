@@ -29,6 +29,7 @@
 #include "saturn_fade.h"
 #include "saturn_vdp1.h"
 #include "saturn_vdp2.h"
+#include "coup_bg_data.h"   /* COUP_BG_SCENE_* */
 #endif
 
 /*============================================================================
@@ -1809,6 +1810,16 @@ void coup_render_screen(const coup_state_t* st)
 
         if ((int)st->screen != s_last_screen) {
             s_last_screen = (int)st->screen;
+
+            /* Pick the backdrop for this screen. The council chamber - a round
+             * table ringed with thrones - belongs to the game itself; every
+             * other screen gets the city skyline. saturn_bg_set_scene skips
+             * the 128 KB copy when the scene is already resident, so this is
+             * free on same-scene transitions. */
+            saturn_bg_set_scene(st->screen == COUP_SCREEN_GAME
+                                ? COUP_BG_SCENE_GAME
+                                : COUP_BG_SCENE_TITLE);
+
             saturn_fade_start(SATURN_FADE_BLACK, SATURN_FADE_NONE, 12, false);
         }
         saturn_fade_tick();
