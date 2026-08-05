@@ -11,6 +11,7 @@
 #include "cui_test_framework.h"
 #include "coup.h"
 #include "coup_ui.h"
+#include "sgl_defs.h"
 
 /*============================================================================
  * The arithmetic
@@ -180,4 +181,42 @@ CUI_TEST(the_longest_menu_item_fits_its_plate_with_its_inset)
 
     CUI_ASSERT(COUP_ITEM_TEXT_INSET > 0);          /* never flush to the edge */
     CUI_ASSERT(COUP_ITEM_TEXT_INSET + text_w <= plate_w);
+}
+
+/*============================================================================
+ * SGL constant fidelity
+ *
+ * These are transcribed from SL_DEF.H by hand, because this PAL builds
+ * against bare declarations rather than SGL's headers. A transcription error
+ * is silent: the wrong bit still compiles and still runs.
+ *============================================================================*/
+
+CUI_TEST(screen_enable_bits_match_sl_def_h)
+{
+    /* SL_DEF.H:542-549. SPRON was transcribed as (1<<5) - the LINE COLOUR
+     * screen - so the fade armed its colour offset on the wrong layer and
+     * sprites never faded with the backdrop. */
+    CUI_ASSERT_EQ(1 << 0, NBG0ON);
+    CUI_ASSERT_EQ(1 << 1, NBG1ON);
+    CUI_ASSERT_EQ(1 << 2, NBG2ON);
+    CUI_ASSERT_EQ(1 << 3, NBG3ON);
+    CUI_ASSERT_EQ(1 << 4, RBG0ON);
+    CUI_ASSERT_EQ(1 << 5, LNCLON);
+    CUI_ASSERT_EQ(1 << 6, SPRON);
+
+    /* The sprite layer and the line colour screen must not be the same bit.
+     * That confusion is exactly what the bug was. */
+    CUI_ASSERT(SPRON != LNCLON);
+}
+
+CUI_TEST(the_fade_arms_the_sprite_layer)
+{
+    /* What saturn_fade.c passes to slColOffsetAUse. It must include the
+     * sprite bit, or a fade dims the painted backdrop while every portrait,
+     * panel and glyph stays at full brightness. */
+    const int fade_mask = NBG0ON | NBG1ON | SPRON;
+
+    CUI_ASSERT((fade_mask & SPRON) != 0);
+    CUI_ASSERT((fade_mask & NBG1ON) != 0);
+    CUI_ASSERT_EQ(0x43, fade_mask);
 }

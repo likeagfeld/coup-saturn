@@ -381,14 +381,23 @@ extern void slSpriteColMode(Uint16 mode);
 #define COL_TYPE_1M     0x40   /* 16M direct color (SGL spells it 1M) */
 #define COL_TYPE_16M    COL_TYPE_1M  /* backwards-compatible alias */
 
-/* Scroll plane enable flags */
+/* Scroll plane enable flags (SL_DEF.H:542-549).
+ *
+ * MEASURED 2026-08-05: SPRON was declared here as (1<<5) and BACKON as
+ * (1<<6). Both were wrong by one bit. (1<<5) is the LINE COLOUR screen, so
+ * saturn_fade.c's slColOffsetAUse(NBG0ON | NBG1ON | SPRON) was arming the
+ * colour offset on the line colour screen instead of the sprite layer - the
+ * backdrops faded and every sprite, panel and glyph stayed at full brightness
+ * through the whole fade. Copied from SL_DEF.H verbatim, including the fact
+ * that SEGA gives BACKON and LNCLON the same bit. */
 #define NBG0ON          (1 << 0)
 #define NBG1ON          (1 << 1)
 #define NBG2ON          (1 << 2)
 #define NBG3ON          (1 << 3)
 #define RBG0ON          (1 << 4)
-#define SPRON           (1 << 5)
-#define BACKON          (1 << 6)
+#define LNCLON          (1 << 5)
+#define SPRON           (1 << 6)
+#define BACKON          (1 << 5)
 
 /* WARNING: These are SGL-internal dispatch indices, NOT VDP2 layer numbers.
  * The values are intentionally non-sequential. Do not "correct" them.
