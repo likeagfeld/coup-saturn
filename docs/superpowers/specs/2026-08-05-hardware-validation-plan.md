@@ -84,3 +84,36 @@ It also bounds the timing variance that a single measurement could not: across
 Still an EMULATOR measurement. It settles the API-lifecycle question, which is
 emulator-faithful (it is library state, not drive physics). It does NOT settle
 real-drive seek timing - see C12.
+
+### C12 — the 0.35 s figure is transfer-dominated (supporting analysis)
+
+The whole disc payload is tiny, and that changes how much the emulator figure
+can be trusted.
+
+```
+executable 0.bin        546,576 B =  266 sectors
+8 scene files           577,536 B =  282 sectors
+total user data       1,124,112 B =  548 sectors
+
+one scene              36 sectors -> 0.23 s of pure transfer at 2x (150 sect/s)
+measured on emulator                 0.35 s
+```
+
+So of the measured 0.35 s, roughly 0.23 s is transfer the drive cannot beat,
+and ~0.12 s is seek plus library overhead.
+
+Seek is bounded by the payload SPAN, not the disc. 548 sectors is 0.16% of a
+650 MB disc's sector count, so every scene file sits within a very short stroke
+of every other. Worst-case seek here is near the drive's minimum, not its
+average - a full-stroke seek does not arise, because there is nowhere on this
+disc to stroke to.
+
+This matters because transfer rate is the part an emulator models most
+faithfully (it is a fixed 2x constant), while seek is the part it approximates.
+The measurement is dominated by the faithful component, and the remaining
+budget headroom is 1.00 s against 0.35 s - roughly 3x - which absorbs a seek
+several times worse than modelled.
+
+Files are laid out alphabetically and contiguously by mkisofs, which is why the
+span is this tight. Adding a large asset later would widen it; that is worth
+remembering, not fixing now.
