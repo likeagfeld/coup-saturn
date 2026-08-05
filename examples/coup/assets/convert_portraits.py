@@ -89,6 +89,59 @@ def build_frames(card_path, frames, zoom_max):
     return out
 
 
+# Only 15 colours survive quantization, so every one has to earn its place.
+# MEASURED on the delivered portraits: assassin sits at 24.5% mean saturation,
+# ambassador spans only 115 of 255 luma with a contrast of 32.9, and duke is
+# 39.2% saturated - that flatness is the "washed out" report. Stretching
+# BEFORE quantizing means the 15 slots are spent across the full range instead
+# of clustered in the middle.
+STRETCH_CLIP = 0.005      # ignore the extreme 0.5% each end (specular / noise)
+SAT_BOOST = 1.35
+# How far to correct a per-channel colour cast. 1.0 equalises every channel
+# and strips the scene's identity; 0.0 leaves the cast untouched.
+CAST_CORRECT = 0.65
+
+
+def stretch_frames(frames):
+    """Auto-level the whole sequence together, then lift saturation.
+
+    Levelling each frame independently would make the character pulse between
+    frames, because the histogram shifts as the art animates. One set of
+    limits taken across every frame keeps the sequence stable.
+    """
+    import numpy as np
+
+    stack = np.concatenate([np.asarray(f.convert("RGB")).reshape(-1, 3)
+                            for f in frames]).astype(float)
+
+    # PER-CHANNEL limits, not one luma scale. A single luma scale preserves
+    # whatever colour cast the render already had - the delivered portraits sit
+    # under a heavy warm key light, so red is near full while blue never leaves
+    # the bottom third. Levelling each channel to its own range removes the
+    # cast and hands the quantizer a genuinely wider gamut to spend 15 slots
+    # on, which is what "better colours" needs. Luma alone cannot do it.
+    lo = np.percentile(stack, STRETCH_CLIP * 100, axis=0)
+    hi = np.percentile(stack, 100 - STRETCH_CLIP * 100, axis=0)
+    span = np.maximum(hi - lo, 1.0)
+
+    # Do not fully equalise: pushing every channel to the same range strips
+    # the scene's colour identity. Blend the per-channel limits toward the
+    # common ones so the cast is reduced, not erased.
+    common_lo, common_hi = lo.mean(), hi.mean()
+    lo = lo * CAST_CORRECT + common_lo * (1.0 - CAST_CORRECT)
+    hi = hi * CAST_CORRECT + common_hi * (1.0 - CAST_CORRECT)
+    span = np.maximum(hi - lo, 1.0)
+
+    out = []
+    for f in frames:
+        a = np.asarray(f.convert("RGB")).astype(float)
+        a = np.clip((a - lo) * (255.0 / span), 0, 255)
+        grey = a.mean(axis=2, keepdims=True)
+        a = np.clip(grey + (a - grey) * SAT_BOOST, 0, 255)
+        out.append(Image.fromarray(a.astype("uint8"), "RGB"))
+    return out, float(np.mean(255.0 / span))
+
+
 def quantize_shared(frames, max_colors):
     """One palette for every frame of a character.
 
@@ -100,7 +153,11 @@ def quantize_shared(frames, max_colors):
     for i, f in enumerate(frames):
         strip.paste(f, (i * SPRITE_W, 0))
 
-    q = strip.quantize(colors=max_colors, method=Image.MEDIANCUT,
+    # MAXCOVERAGE picks colours by how much of the image they actually cover,
+    # rather than by median-cut's split order. At 15 slots that difference is
+    # visible: medcut spends slots on rare highlights, maxcoverage on skin and
+    # cloth, which is where the eye goes.
+    q = strip.quantize(colors=max_colors, method=Image.MAXCOVERAGE,
                        dither=Image.Dither.FLOYDSTEINBERG)
     flat = q.getpalette()[: max_colors * 3]
     idx = q.tobytes()
@@ -189,6 +246,7 @@ def main():
         else:
             frames = build_frames(os.path.join(args.src, f"{name}.png"),
                                   args.frames, ZOOM_MAX)
+        frames, _scale = stretch_frames(frames)
         per_frame, palette = quantize_shared(frames, MAX_COLORS)
         verify(per_frame, palette, name)
         all_data[name] = [pack_4bpp(p) for p in per_frame]

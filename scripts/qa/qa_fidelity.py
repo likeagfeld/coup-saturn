@@ -39,9 +39,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "examples", "coup", "assets"))
 try:
     from convert_backgrounds import lift_shadows, trim_panel_seam
+    from convert_portraits import stretch_frames
 except ImportError:
     lift_shadows = None
     trim_panel_seam = None
+    stretch_frames = None
 
 PSNR_MIN = 26.0        # below this, degradation is visible
 PALETTE_USE_MIN = 0.85  # must use at least 85% of available slots
@@ -180,10 +182,32 @@ def check_portrait(name, src_dir, hdr_data, hdr_spr):
     if not frames:
         FAILURES.append(f"portrait {name}: no source frames to compare")
         return
-    ref = Image.open(frames[0]).convert("RGB").resize((w, h), Image.LANCZOS)
+    # Same rule as the backgrounds: the reference must carry every deliberate
+    # transform, or this gate scores the grading instead of the quantization.
+    # The portraits are auto-levelled per channel and saturation-boosted
+    # before quantizing (convert_portraits.stretch_frames), which is what
+    # fixed them being washed out - without it here they read as 15-19 dB.
+    ref = Image.open(frames[0]).convert("RGB")
+    if stretch_frames is not None:
+        ref = stretch_frames([ref])[0][0]
+    ref = ref.resize((w, h), Image.LANCZOS)
 
     p, e = psnr(out, ref), mae(out, ref)
-    used = len(set(n for byte in blob for n in (byte >> 4, byte & 0xF)))
+    # Across the WHOLE sequence, not frame 0. The palette is shared by all
+    # frames by design (so a frame change needs no CRAM upload), so any single
+    # frame legitimately uses only part of it - assassin's first frame uses 12
+    # of 15 while the sequence uses all 15. Scoring one frame punished a
+    # correct shared palette.
+    all_idx = set()
+    for fi in range(16):
+        fb = parse_bytes(hdr_data, f"coup_animdata_{name}_f{fi:02d}")
+        if fb is None:
+            break
+        for byte in fb:
+            all_idx.add(byte >> 4)
+            all_idx.add(byte & 0xF)
+    used = len(all_idx) if all_idx else len(
+        set(n for byte in blob for n in (byte >> 4, byte & 0xF)))
     use_ratio = used / 15.0
     d = detail(out) / max(1e-6, detail(ref))
 
