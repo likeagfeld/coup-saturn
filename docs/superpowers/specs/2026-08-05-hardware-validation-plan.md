@@ -117,3 +117,86 @@ several times worse than modelled.
 Files are laid out alphabetically and contiguously by mkisofs, which is why the
 span is this tight. Adding a large asset later would widen it; that is worth
 remembering, not fixing now.
+
+---
+
+## VDP2 colour calculation review — findings
+
+### C1 — arming sequence: **PARTIALLY REFUTED, but the shipped code is complete**
+
+The four calls are necessary and not sufficient. Three further conditions are
+required, and the repo already satisfies all three:
+
+| Requirement | Citation | Where |
+|---|---|---|
+| `SPCLMD=1` (mixed palette+RGB) — without it VDP2 reads every word as a palette code and RGB code does not exist | ST-058-R2 §9.1 p.203 Fig 9.2; SPCTL bit 5 p.207 | `saturn_vdp1.c:324` |
+| Sprite priority register 0 non-zero — "sprite characters that use the register set to a priority number value of 0 are treated as transparent and are not displayed" | ST-058-R2 p.209 | `saturn_pal.c:379` `slPrioritySpr0(6)` |
+| Sprite type 0-7 (16-bit pixels) | ST-058-R2 p.208 | `saturn_vdp1.c:325` |
+
+**The call ORDER is load-bearing.** Decoded from `LIBSGL.A`: `slColorCalc`
+masks CCCTL down to 0xF000, clearing *all seven* screen enable bits;
+`slColorCalcOn` then byte-stores the enable set. Calling them the other way
+round kills colour calculation silently. `main_saturn.c:256-257` is in the
+correct order.
+
+`slSpriteCCalcNum` is not needed - "ignored when SPCCCS is set to '3'"
+(ST-058-R2 p.207).
+
+### C2 — MSB condition on RGB data: **CONFIRMED, but the recorded reason was wrong**
+
+ST-058-R2 §9.2 p.207: *"When the sprite color format is RGB, color calculation
+is always performed if SPCCCS is set to '3'."* Plates blend unconditionally.
+
+But for PALETTE sprites the MSB tested is **bit 15 of the CRAM entry**, not of
+the framebuffer word - Tech Bulletin SOA-7 (16 Aug 1995): *"only pixels whose
+palette entries have their most-significant bits set... simply by rewriting a
+palette entry or two."* This is internally forced: with `SPCLMD=1` a palette
+pixel's framebuffer MSB is 0 by definition (it is the format discriminator,
+p.203), so a framebuffer reading would make the condition dead for palette
+sprites and contradict SOA-7.
+
+The comments in `sgl_defs.h` and `main_saturn.c` reach the right answer via the
+wrong bit. **Outcome is correct today** - MEASURED 673 uploaded palette words,
+0 with bit 15 set - but nothing enforced it. `qa_cram_msb.py` now does, proven
+RED on a single injected `0x8000` and GREEN on the tree.
+
+### C3 — sprite type: **CONFIRMED**
+
+Type 0 is correct and is set explicitly. RGB pixels ignore the type table
+entirely - ST-058-R2 §9.1 p.200: *"Priority bits, color calculation ratio bits,
+and shadow bits are considered to be 0"*, and p.204/206: *"When sprite data is
+in an RGB format, sprite register 0 is selected."* So `slColRateSpr0` and
+`slPrioritySpr0` are exactly the right registers. Consequence worth knowing:
+there is exactly **one** sprite priority and **one** blend ratio available.
+
+### C4 — fade interaction: **CONFIRMED SAFE**
+
+ST-058-R2 §13.1 p.250: *"the color offset function process FOLLOWS the color
+calculation function process... the result screen of color calculation is
+treated as the top image screen."* A blended plate is offset once, via the
+sprite screen's bit. `saturn_fade.c` applies the same offset to
+`NBG0ON|NBG1ON|SPRON`, so blended and unblended regions fade identically. A
+fade cannot corrupt a blended plate. Independently confirms the `SPRON=(1<<6)`
+correction.
+
+### C-extra — constraints to respect later
+
+- **Resolution is now load-bearing.** ST-058-R2 Table 12.1 p.236 + Tech
+  Bulletin #24: in hi-res with CRAM mode 1 or 2, colour calculation cannot be
+  used at all with a palette-format second image - and NBG1 is exactly that.
+  `TV_320x224` is fine. Changing resolution would silently delete the effect.
+- **Keep CRAM banks below 127** (Tech Bulletin #25). This project starts at 16.
+- `SPWINEN` must stay 0 while `SPCLMD=1` (ST-058-R2 p.188). Never called.
+
+### Hardware verification addresses (SGL shadow, GBR = 0x060FFC00)
+
+Do NOT read SPCTL/CCCTL from a savestate - SGL rewrites them every vblank
+(skill gotcha #12). Peek the shadow in WRAM-H instead (mind the byte-pair swap,
+gotcha #10):
+
+| Shadow | Address | Expected |
+|---|---|---|
+| SPCTL | `0x060FFDA0` | `0x3020` (SPCCCS=3, SPCLMD=1, SPWINEN=0, TYPE=0) |
+| CCCTL | `0x060FFDAC` | `0x0040` (SPCCEN only) |
+| S0CCRT | `0x060FFDC1` byte | `7` (CLRate24_8) |
+| S0PRIN | `0x060FFDB1` byte | `6` |
