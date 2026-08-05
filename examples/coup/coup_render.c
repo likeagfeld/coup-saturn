@@ -358,6 +358,19 @@ static const coup_player_t* find_self(const coup_state_t* st)
 
 #ifdef __SATURN__
 /** Map character ID to sprite index, or -1. */
+/** Character -> official 48x72 card face, or -1 if unknown. */
+static int char_to_card_ui(int character)
+{
+    switch (character) {
+    case COUP_CHAR_DUKE:       return COUP_UI_DUKE;
+    case COUP_CHAR_ASSASSIN:   return COUP_UI_ASSASSIN;
+    case COUP_CHAR_CAPTAIN:    return COUP_UI_CAPTAIN;
+    case COUP_CHAR_AMBASSADOR: return COUP_UI_AMBASSADOR;
+    case COUP_CHAR_CONTESSA:   return COUP_UI_CONTESSA;
+    default:                   return -1;
+    }
+}
+
 static int char_to_sprite(int character)
 {
     switch (character) {
@@ -1822,8 +1835,18 @@ static void render_your_hand(const coup_state_t* st)
     /* Card 0 */
     {
         int c0 = st->my_cards[0];
+        /* Declared outside the Saturn block: the label suppression below is
+         * shared code and needs to know whether a card face was drawn.
+         * Off-target there are no sprites, so it stays -1 and the text label
+         * is drawn as before. */
+        int card0 = -1;
 #ifdef __SATURN__
-        if (coup_anim_loaded() && c0 < COUP_NUM_CHARACTERS) {
+        card0 = char_to_card_ui(c0);
+        if (coup_fx_loaded() && card0 >= 0) {
+            /* Official card face at its authored 48x72 - no scaling, so no
+             * downscale blockiness. */
+            coup_ui_draw(card0, H->card0_x, H->card0_y);
+        } else if (coup_anim_loaded() && c0 < COUP_NUM_CHARACTERS) {
             int frame = (st->frame_count / 8 + c0 * 5) % COUP_ANIM_FRAMES;
             portrait_medallion(H->card0_x, H->card0_y, 32, 48);
             /* Portraits are authored at 64x96; the hand slots are
@@ -1840,7 +1863,10 @@ static void render_your_hand(const coup_state_t* st)
             panel(H->card0_x, H->card0_y, 32, 48, color);
         }
 #endif
-        if (c0 < COUP_NUM_CHARACTERS) {
+        /* The official card face prints its own name, so the abbreviation
+         * would sit on top of it saying the same thing. Only label the
+         * fallback, which is a bare portrait with no text of its own. */
+        if (c0 < COUP_NUM_CHARACTERS && card0 < 0) {
             CUI_DISPLAY()->draw_text_sprite(H->label0_x, H->label0_y,
                 coup_char_short[c0], coup_char_text_color(c0));
         }
@@ -1849,8 +1875,18 @@ static void render_your_hand(const coup_state_t* st)
     /* Card 1 */
     {
         int c1 = st->my_cards[1];
+        /* Declared outside the Saturn block: the label suppression below is
+         * shared code and needs to know whether a card face was drawn.
+         * Off-target there are no sprites, so it stays -1 and the text label
+         * is drawn as before. */
+        int card1 = -1;
 #ifdef __SATURN__
-        if (coup_anim_loaded() && c1 < COUP_NUM_CHARACTERS) {
+        card1 = char_to_card_ui(c1);
+        if (coup_fx_loaded() && card1 >= 0) {
+            /* Official card face at its authored 48x72 - no scaling, so no
+             * downscale blockiness. */
+            coup_ui_draw(card1, H->card1_x, H->card1_y);
+        } else if (coup_anim_loaded() && c1 < COUP_NUM_CHARACTERS) {
             int frame = (st->frame_count / 8 + c1 * 5) % COUP_ANIM_FRAMES;
             portrait_medallion(H->card1_x, H->card1_y, 32, 48);
             /* Portraits are authored at 64x96; the hand slots are
@@ -1867,7 +1903,10 @@ static void render_your_hand(const coup_state_t* st)
             panel(H->card1_x, H->card1_y, 32, 48, color);
         }
 #endif
-        if (c1 < COUP_NUM_CHARACTERS) {
+        /* The official card face prints its own name, so the abbreviation
+         * would sit on top of it saying the same thing. Only label the
+         * fallback, which is a bare portrait with no text of its own. */
+        if (c1 < COUP_NUM_CHARACTERS && card1 < 0) {
             CUI_DISPLAY()->draw_text_sprite(H->label1_x, H->label1_y,
                 coup_char_short[c1], coup_char_text_color(c1));
         }

@@ -688,8 +688,15 @@ static const coup_ui_t __attribute__((unused)) COUP_UI = {
         /* Player hand (center-bottom, flush to screen bottom) */
         .hand = {
             .panel       = {GAME_CENTER_X, GAME_HAND_Y, GAME_CENTER_W, GAME_HAND_H},
-            .card0_x     = GAME_CENTER_X + 12,  .card0_y    = GAME_HAND_Y + 4,
-            .card1_x     = GAME_CENTER_X + 124, .card1_y    = GAME_HAND_Y + 4,
+            /* Sized for the OFFICIAL 48x72 card art, drawn at native size.
+             * The hand used to show the animated portraits scaled down from
+             * 64x96 to 32x48, which is where the blockiness came from - a 2:1
+             * downscale of an already-15-colour sprite. The card faces are
+             * authored at 48x72 and need no scaling at all.
+             * Panel is x 72..248; 4 px inset each side leaves a 72 px gap in
+             * the middle, which the name and coin counter already fit. */
+            .card0_x     = GAME_CENTER_X + 4,   .card0_y    = GAME_HAND_Y + 1,
+            .card1_x     = GAME_CENTER_X + 124, .card1_y    = GAME_HAND_Y + 1,
             .label0_x    = GAME_CENTER_X + 16,   .label0_y  = GAME_HAND_Y + 54,
             .label1_x    = GAME_CENTER_X + 128,  .label1_y  = GAME_HAND_Y + 54,
             .name_x      = GAME_CENTER_X + 56,  .name_y     = GAME_HAND_Y + 12,
