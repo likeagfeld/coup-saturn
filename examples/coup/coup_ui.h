@@ -79,8 +79,13 @@
 /* Font registry indices. The Saturn PAL registers the built-in 8x8 face first,
  * so it is always 0; main_saturn.c registers the 16x16 display face next.
  * Kept together here so the two files cannot drift apart. */
-#define COUP_FONT_BODY       0
+/* Registration order in main_saturn.c defines these. The PAL registers its
+ * built-in 8x8 face as 0; the game then registers Alagard 16x16 (1) and the
+ * condensed Alagard 8x8 (2). BODY points at the condensed custom face, not
+ * the built-in one - the built-in remains registered only as a fallback. */
+#define COUP_FONT_BUILTIN    0
 #define COUP_FONT_DISPLAY    1
+#define COUP_FONT_BODY       2
 
 /*============================================================================
  * Game Screen Layout Anchors

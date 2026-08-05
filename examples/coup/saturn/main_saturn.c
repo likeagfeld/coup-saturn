@@ -47,6 +47,8 @@
 /* Action effects and UI sprites */
 #include "coup_fx_loader.h"
 #include "coup_qa_screen.h"
+#include "coup_ui.h"   /* COUP_FONT_* registry indices */
+#include "fonts/saturn_font_alagard_8x8.h"
 
 /* Plate/backdrop blend ratio, top:second.
  *
@@ -265,9 +267,30 @@ void main(void)
      * Registration order defines those indices, so this must stay first. */
     {
         saturn_font_desc_t display_font;
+        saturn_font_desc_t body_font;
+
+        /* Index 1 - COUP_FONT_DISPLAY. The 16x16 face, for headings and
+         * buttons, where its 11-px-ink-on-8-px-advance overlap interlocks
+         * the letters and looks deliberate. */
         saturn_font_alagard_16x16_desc(&display_font);
         cui_saturn_font_register(&display_font);
+
+        /* Index 2 - COUP_FONT_BODY. The same face condensed to 8x8.
+         *
+         * The 16x16 original CANNOT carry body text: MEASURED, its ink spans
+         * 11 columns on an advance of 8 so adjacent letters collide, and it
+         * needs 13 rows against a layout pitch of 8 so every line would
+         * overlap the one below. Raising the pitch to fit it would roughly
+         * halve the lines per screen. The derivative drops into the existing
+         * 8 px grid with no layout change at all. */
+        saturn_font_alagard_8x8_desc(&body_font);
+        cui_saturn_font_register(&body_font);
+
         cui_saturn_font_upload_all();
+
+        /* Everything that does not explicitly ask for the display face now
+         * gets the custom body face instead of the PAL's built-in 8x8. */
+        cui_saturn_font_set_active(COUP_FONT_BODY);
     }
 
     /* Gradient tables for the lit UI panels. */
