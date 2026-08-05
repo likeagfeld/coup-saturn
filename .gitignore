@@ -92,3 +92,6 @@ __pycache__/
 # Python and Pillow, which the hermetic Saturn image does not carry. Ignoring
 # them would make a fresh clone build a disc whose every background is black,
 # with no build-time symptom. 505 KB total.
+
+# QA captures and build logs - regenerate with scripts/qa/capture_all_screens.sh
+build/qa/*.log

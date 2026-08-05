@@ -262,10 +262,35 @@ def gate_implicit_decls():
         info("I", "no implicitly declared functions")
 
 
+# ----------------------------------------------------- J: no QA build ships
+def gate_no_qa_build():
+    """A capture-QA disc must never be mistaken for a shippable one.
+
+    -DCOUP_QA_SCREEN boots straight to one screen with synthetic players and
+    a fabricated hand. It is invaluable for photographing the screens behind
+    online play and catastrophic to ship, because the game would never reach
+    the title.
+    """
+    mk = open("examples/coup/saturn/Makefile", encoding="utf-8",
+              errors="replace").read()
+    if re.search(r"^[^#\n]*-DCOUP_QA_SCREEN", mk, re.M):
+        fail("J", "the Makefile defines COUP_QA_SCREEN; that disc boots "
+                  "straight into a fabricated game state and must not ship")
+        return
+    log = "build/qa/build.log"
+    if os.path.exists(log):
+        src = open(log, encoding="utf-8", errors="replace").read()
+        if "-DCOUP_QA_SCREEN" in src:
+            fail("J", "the captured build defined COUP_QA_SCREEN - that disc "
+                      "is a QA build, not a shippable one")
+            return
+    info("J", "no QA screen-forcing in this build")
+
+
 def main():
     for g in (gate_assets, gate_transparency, gate_animation, gate_vdp1,
               gate_cram, gate_headroom, gate_preprocessor, gate_centring,
-              gate_implicit_decls):
+              gate_implicit_decls, gate_no_qa_build):
         try:
             g()
         except Exception as exc:                       # noqa: BLE001

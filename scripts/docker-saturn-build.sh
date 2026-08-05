@@ -100,6 +100,7 @@ MSYS_NO_PATHCONV=1 docker run --rm \
     "${LOCAL_JOENGINE_ARG[@]}" \
     -w "/workspace/$REL_BUILD_DIR" \
     -e "SATURN_RES_DEFINE=$SATURN_RES_DEFINE" \
+    -e "CCFLAGS_EXTRA=${CCFLAGS_EXTRA:-}" \
     "$IMAGE_TAG" \
     bash -c '
         # Local-mount case: bind-mounted checkouts may lack +x on the

@@ -35,7 +35,14 @@ BUILD = _build
 SATURN_RES_DEFINE ?=
 
 # Compiler flags
-CCFLAGS = -m2 -O2 -fomit-frame-pointer \
+# Extra flags from the environment. Used only by
+# scripts/qa/capture_all_screens.sh to pass -DCOUP_QA_SCREEN, which boots
+# straight to one screen with synthetic state so the screens behind online
+# play can be photographed. verify_facelift gate J fails any build that
+# defines it, so a QA disc cannot be shipped by accident.
+CCFLAGS_EXTRA ?=
+
+CCFLAGS = $(CCFLAGS_EXTRA) -m2 -O2 -fomit-frame-pointer \
 	-Wall -Wextra -Wno-unused-parameter \
 	-fno-common -fno-builtin \
 	-nostdlib -nodefaultlibs \
@@ -69,6 +76,7 @@ SRCS += coup_sprite_loader.c
 SRCS += coup_gameover_loader.c
 SRCS += coup_anim_loader.c
 SRCS += coup_fx_loader.c
+SRCS += coup_qa_screen.c
 
 # Shared coup sources (keep in sync with Makefile COUP_*_SRCS)
 SRCS += $(COUP_SHARED)/coup_game.c

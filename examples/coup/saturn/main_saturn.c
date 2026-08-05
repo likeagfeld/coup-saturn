@@ -46,6 +46,7 @@
 
 /* Action effects and UI sprites */
 #include "coup_fx_loader.h"
+#include "coup_qa_screen.h"
 
 /*============================================================================
  * Configuration
@@ -253,6 +254,12 @@ void main(void)
 
     /* ---- Init game ---- */
     coup_init();
+
+    /* Capture QA only: boots straight to one screen with synthetic state so
+     * the screens behind online play can be photographed. Compiles to an
+     * empty call unless -DCOUP_QA_SCREEN is passed, and gate J fails any disc
+     * built with it defined. */
+    coup_qa_force_screen();
 
     /* Initialize audio: loads M68K sound driver, starts CD-DA routing.
      * NOTE: We do NOT send SNDOFF (SMPC 0x07) here — the M68K must
