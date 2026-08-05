@@ -13,19 +13,21 @@
 #define COUP_BG_PAL_BYTES 512
 #define COUP_BG_PIX_BYTES 71680
 #define COUP_BG_FILE_BYTES 72192
-#define COUP_BG_SCENE_COUNT 7
+#define COUP_BG_SCENE_COUNT 8
 
 enum {
-    COUP_BG_SCENE_GAME = 0,
-    COUP_BG_SCENE_TITLE = 1,
-    COUP_BG_SCENE_RULES = 2,
-    COUP_BG_SCENE_LOBBY = 3,
-    COUP_BG_SCENE_CONNECTING = 4,
-    COUP_BG_SCENE_VICTORY = 5,
-    COUP_BG_SCENE_DEFEAT = 6,
+    COUP_BG_SCENE_SPLASH = 0,
+    COUP_BG_SCENE_GAME = 1,
+    COUP_BG_SCENE_TITLE = 2,
+    COUP_BG_SCENE_RULES = 3,
+    COUP_BG_SCENE_LOBBY = 4,
+    COUP_BG_SCENE_CONNECTING = 5,
+    COUP_BG_SCENE_VICTORY = 6,
+    COUP_BG_SCENE_DEFEAT = 7,
 };
 
 /* Source artwork, for the fidelity gate. Do not edit.
+   COUP_BG_SOURCE splash = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/logo/L2_boot_splash.png
    COUP_BG_SOURCE game = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/backgrounds/B2_game_table.png
    COUP_BG_SOURCE title = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/backgrounds/B1_title.png
    COUP_BG_SOURCE rules = Official Art/rulesoverlay.png
@@ -36,6 +38,7 @@ enum {
 */
 
 static const char* const coup_bg_files[COUP_BG_SCENE_COUNT] = {
+    "BGSPLASH.BIN",
     "BGGAME.BIN",
     "BGTITLE.BIN",
     "BGRULES.BIN",

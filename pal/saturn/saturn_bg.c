@@ -124,9 +124,14 @@ void saturn_bg_init(void)
     /* The CD file system must be up before any scene can be read. */
     saturn_cd_init();
 
-    /* Scene 0 is the default backdrop. Referred to by index rather than by a
-     * generated enum name so that adding or renaming scenes in
-     * convert_backgrounds.py cannot break this call. */
+    /* Scene 0 is the boot splash, and it earns its place: the caller loads
+     * every sprite, font and effect immediately after this returns, which
+     * takes visible time. Showing the splash first means that wait is covered
+     * by artwork instead of a blank screen, and the load is not wasted - it
+     * used to fetch a backdrop that the first rendered frame replaced.
+     *
+     * Referred to by index rather than by a generated enum name so that
+     * adding or renaming scenes in convert_backgrounds.py cannot break it. */
     if (saturn_bg_upload(0)) {
         s_scene = 0;
     }
