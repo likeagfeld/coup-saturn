@@ -95,6 +95,9 @@ SEAM_RATIO = 3.0
 # Never trim more than this - a real architectural highlight in the middle of a
 # scene must not be mistaken for a panel edge.
 SEAM_MAX_TRIM = 0.25
+# A sustained level change this large at the edge is a different image,
+# not scene content. MEASURED: B1_title steps 42% across its last 2 columns.
+EDGE_STEP = 0.35
 
 
 def trim_panel_seam(img):
@@ -124,10 +127,24 @@ def trim_panel_seam(img):
             ratio = col[x] / max(nb, 1.0)
             if best is None or ratio > best[1]:
                 best = (x, ratio)
-    if best is None:
-        return img, 0
-    x = best[0]
-    return img.crop((0, 0, x, h)), w - x
+    if best is not None:
+        x = best[0]
+        return img.crop((0, 0, x, h)), w - x
+
+    # No bright border. A neighbouring panel can also bleed in DARKER than the
+    # scene it joins - MEASURED on B1_title, whose last two columns average
+    # 36.8 against 63.3 for the eight before them, a 42% step with no bright
+    # rule between. Look for a sustained level change near the edge, in either
+    # direction, rather than only a bright line.
+    for x in range(w - 2, limit, -1):
+        after = col[x:].mean()
+        before = col[max(0, x - 8):x].mean()
+        if before < 1.0:
+            continue
+        step = abs(after - before) / before
+        if step > EDGE_STEP and (w - x) <= w - limit:
+            return img.crop((0, 0, x, h)), w - x
+    return img, 0
 
 
 def convert(src_path):

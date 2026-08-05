@@ -419,7 +419,11 @@ int  coup_centre_x(int container_w, int text_w);
 /* Frames each effect frame is held for. Declared here so the pacing can be
  * asserted on the host - MEASURED at 3 the shortest effect ran 0.30 s, which
  * reads as a flicker rather than an event. */
-#define COUP_FX_HOLD_FRAMES 9
+#define COUP_FX_HOLD_FRAMES 14
+
+/* Rows of match recap shown on the game-over screen. Shared so the input
+ * handler clamps scrolling to exactly what the renderer draws. */
+#define COUP_GAMEOVER_RECAP_ROWS 5
 
 /* Effect trigger - pure logic, unit tested on the host. */
 int  coup_fx_for_action(int action);

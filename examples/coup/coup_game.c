@@ -1913,6 +1913,27 @@ static void update_game(cui_input_action_t action)
 
 static void update_game_over(cui_input_action_t action)
 {
+    /* Scroll the match recap.
+     *
+     * The screen advertises [UP/DOWN] when there is more log than fits, and
+     * before this it did nothing at all - the hint promised a control that
+     * was never wired. The clamp uses the same row count the renderer draws,
+     * shared via COUP_GAMEOVER_RECAP_ROWS, so the list cannot scroll past
+     * what is on screen. */
+    if (action == CUI_INPUT_UP) {
+        if (g_state.log_scroll > 0) {
+            g_state.log_scroll--;
+        }
+        return;
+    }
+    if (action == CUI_INPUT_DOWN) {
+        int max_scroll = g_state.log_count - COUP_GAMEOVER_RECAP_ROWS;
+        if (max_scroll > 0 && g_state.log_scroll < max_scroll) {
+            g_state.log_scroll++;
+        }
+        return;
+    }
+
     if (action == CUI_INPUT_CONFIRM) {
         coup_audio_play_sfx(COUP_SFX_CONFIRM);
         if (g_state.local_mode) {

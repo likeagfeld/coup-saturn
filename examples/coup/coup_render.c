@@ -2139,7 +2139,7 @@ static void coup_render_game_over(const coup_state_t* st)
     {
         const int panel_x = 24, panel_w = COUP_SCREEN_W - 48;
         const int panel_y = 112, row_h = 10;
-        const int max_rows = 5;
+        const int max_rows = COUP_GAMEOVER_RECAP_ROWS;
         int total = st->log_count;
         int shown = total < max_rows ? total : max_rows;
         int scroll = st->log_scroll;
