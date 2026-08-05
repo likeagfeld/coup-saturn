@@ -136,6 +136,19 @@ int coup_centre_x(int container_w, int text_w)
 }
 
 /**
+ * Draw `text` centred inside the pixel span `x`..`x + w`, at pixel row `y`.
+ *
+ * The grid-row form below centres on the whole screen, which is right for a
+ * heading but wrong for a label that belongs to a specific plate.
+ */
+static void draw_centered_in(int x, int w, int y, const char* text,
+                             uint32_t color)
+{
+    CUI_DISPLAY()->draw_text_sprite(x + coup_centre_x(w, text_px_w(text)), y,
+                                    text, color);
+}
+
+/**
  * Draw `text` horizontally centred on screen at grid row `row`.
  *
  * Replaces the older habit of padding a string literal with leading spaces to
@@ -824,8 +837,14 @@ static void coup_render_connecting(const coup_state_t* st)
     vline(L->main_panel.x, L->main_panel.y, L->main_panel.h, COUP_ACCENT_BLUE);
     vline(L->main_panel.x + L->main_panel.w - 2, L->main_panel.y, L->main_panel.h, COUP_ACCENT_BLUE);
 
-    /* Title */
-    CUI_DISPLAY()->draw_text_sprite(L->title_pos.x, L->title_pos.y, "CONNECTING", COUP_TEXT_YELLOW);
+    /* Title, centred on the panel.
+     *
+     * It used to be drawn at a literal x of 80. "CONNECTING" is 10 characters
+     * at an 8 px advance, so it spanned 80..160 and centred on 120 - while
+     * the gold rule immediately beneath it spans 80..240 and centres on 160.
+     * The heading was 40 px left of its own underline. */
+    draw_centered_in(L->main_panel.x, L->main_panel.w, L->title_pos.y,
+                     "CONNECTING", COUP_TEXT_YELLOW);
     hline(L->title_hline_x, L->title_hline_y, L->title_hline_w, COUP_ACCENT_GOLD);
 
     /* Connection stage messages */
@@ -899,7 +918,8 @@ static void coup_render_connecting(const coup_state_t* st)
 
     /* Cancel hint */
     panel_r(L->cancel_panel, COUP_PANEL_MID);
-    CUI_DISPLAY()->draw_text_sprite(L->cancel_text_pos.x, L->cancel_text_pos.y, "[B] Cancel", COUP_BTN_B_COLOR);
+    draw_centered_in(L->cancel_panel.x, L->cancel_panel.w,
+                     L->cancel_text_pos.y, "[B] Cancel", COUP_BTN_B_COLOR);
 
     /* Retry count if applicable */
     if (st->auth_retries > 0) {
@@ -1037,7 +1057,12 @@ static void coup_render_lobby(const coup_state_t* st)
     hline(L->player_area.x, L->player_area.y, L->player_area.w, COUP_ACCENT_DIM);
 
     /* Header text */
-    draw_at(0, 0, offline ? " COUP - LOBBY" : " COUP - WAITING ROOM", COUP_TEXT_YELLOW);
+    /* Two different strings shared column 0 with a leading space as a nudge,
+     * so neither was centred and they could not both be. Measured, they are
+     * 13 and 19 characters - the difference is 48 px. */
+    draw_centered_in(L->header_bar.x, L->header_bar.w, L->header_bar.y + 2,
+                     offline ? "COUP - LOBBY" : "COUP - WAITING ROOM",
+                     COUP_TEXT_YELLOW);
 
     /* --- Player slot backgrounds --- */
     for (i = 0; i < COUP_MAX_PLAYERS; i++) {
