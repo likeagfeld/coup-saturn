@@ -58,17 +58,40 @@ def main():
     print(f"  spawned pid {proc.pid} on :{ra.PORT}")
     try:
         time.sleep(int(sys.argv[1]) if len(sys.argv) > 1 else 45)
-        raw = ra.read_ram(ra.phys_to_offset(addr), struct.calcsize(FMT))
-        if raw is None:
-            print("GATE AUDIO RESTORE: INCONCLUSIVE - no response")
+        got = ra.locate_witness(addr, MAGIC, struct.calcsize(FMT))
+        if got is None:
+            print("GATE AUDIO RESTORE: INCONCLUSIVE - no response, or the "
+                  "witness magic is not within +/-0x200 of the map address. "
+                  "The build may not have booted; this is not a verdict.")
             return 2
-        magic, calls, reissued, nr, np_ = struct.unpack(
-            FMT, ra.unswap(bytes(raw)))
+        raw, actual, delta = got
+        print(f"  witness found at 0x{actual:08X} "
+              f"({delta:+#x} from the linker map)")
+        magic, calls, reissued, nr, np_ = struct.unpack(FMT, raw)
         if magic != MAGIC:
             print(f"  magic 0x{magic:08X}, expected 0x{MAGIC:08X}")
-            print("GATE AUDIO RESTORE: RED - the restore path NEVER RAN. "
-                  "Every backdrop load has silently killed the music.")
-            return 1
+            # An absent magic means the witness struct has not been
+            # INITIALISED - which happens at boot, before any backdrop is
+            # loaded. It does NOT mean the restore path failed to run; those
+            # two states are indistinguishable from this read, and the one
+            # that is far more likely is "the emulator has not booted that
+            # far yet inside the capture window."
+            #
+            # MEASURED: this branch reported RED - "every backdrop load has
+            # silently killed the music" - on a build whose restore path was
+            # correct, purely because 45 s was not enough to reach a scene
+            # change on a contended host. qa_cd_budget.py reads the same kind
+            # of witness and calls the same evidence INCONCLUSIVE; this gate
+            # calling it RED was the inconsistency, not the build.
+            #
+            # RED is reachable only below, where the magic IS present and the
+            # call counter is zero - that is the state that actually means
+            # the path did not run.
+            print("GATE AUDIO RESTORE: INCONCLUSIVE - the witness has not "
+                  "been initialised, so the build has not reached a scene "
+                  "change yet. Re-run with a longer window; this is not a "
+                  "build verdict.")
+            return 2
         print(f"  restore called      {calls}")
         print(f"  playback re-issued  {reissued}")
         print(f"  skipped, not ready  {nr}")

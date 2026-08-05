@@ -62,11 +62,17 @@ def symbol_addr(mapfile, name):
 
 
 def read_stats(addr):
-    off = ra.phys_to_offset(addr)
-    raw = ra.read_ram(off, STATS_LEN)
-    if raw is None:
+    """Locate the stats block by its magic - see ra.locate_witness(). The
+    linker map address is 0x40 off from where the image actually loads, and
+    reading it directly returned uninitialised memory just past the block."""
+    got = ra.locate_witness(addr, MAGIC, STATS_LEN)
+    if got is None:
         return None
-    return struct.unpack(STATS_FMT, ra.unswap(bytes(raw)))
+    raw, actual, delta = got
+    if delta:
+        print(f"  witness found at 0x{actual:08X} "
+              f"({delta:+#x} from the linker map)")
+    return struct.unpack(STATS_FMT, raw)
 
 
 def main():

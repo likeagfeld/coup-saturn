@@ -49,6 +49,7 @@ import argparse
 import os
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -370,6 +371,53 @@ def main():
         return cmd_peek(int(args.peek, 0))
     ap.print_help()
     return 0
+
+
+# Bytes either side of the linker-map address to search for a witness magic.
+# The observed discrepancy is a uniform 0x40; this allows generous slack in
+# both directions without being wide enough to collide with an unrelated
+# struct that happens to share the magic.
+WITNESS_SEARCH = 0x200
+
+
+def locate_witness(map_addr, magic, length):
+    """Read a witness struct, locating it by its MAGIC rather than trusting
+    the linker map address. Returns (bytes, actual_addr, delta) or None.
+
+    WHY THIS EXISTS
+      The linker map and the loaded image disagree by a uniform 0x40 bytes.
+      MEASURED in one emulator session, reading three addresses back to back:
+
+        0608AE4C (map says)   01000000 06036160 ...   magic absent
+        0608AE0C (map-0x40)   41554457 00000018 ...   magic at offset 0
+
+      Both witnesses in the build show the same -0x40 delta, so it is an
+      image-wide load-vs-link offset, not a per-symbol accident.
+
+      Reading the map address blindly made two gates report on uninitialised
+      memory 64 bytes past their own witness. qa_cd_budget called it
+      INCONCLUSIVE; qa_audio_restore called it RED - "every backdrop load has
+      silently killed the music" - on a build whose restore path had in fact
+      run 24 times and re-issued playback 24 times. The gate was reading the
+      wrong 24 bytes and reporting a defect that did not exist.
+
+      Hard-coding -0x40 would work until the next toolchain change moves it.
+      A magic exists so a struct can identify itself; using it to LOCATE the
+      struct is what makes the address self-correcting. The map still supplies
+      the starting point - this only searches nearby, and reports the delta so
+      a drifting offset is visible rather than silently absorbed.
+    """
+    lo = max(0, map_addr - WITNESS_SEARCH)
+    span = WITNESS_SEARCH * 2 + length
+    raw = read_ram(phys_to_offset(lo), span)
+    if raw is None:
+        return None
+    buf = unswap(bytes(raw))
+    idx = buf.find(struct.pack(">I", magic))
+    if idx < 0 or idx + length > len(buf):
+        return None
+    actual = lo + idx
+    return buf[idx:idx + length], actual, actual - map_addr
 
 
 if __name__ == "__main__":
