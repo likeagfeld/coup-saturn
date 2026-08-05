@@ -622,12 +622,17 @@ static void coup_render_settings(const coup_state_t* st)
         uint32_t text_col;
 
         if (j == diff) {
-            panel(dx - 2, L->diff_y, L->diff_option_w, L->diff_option_h, COUP_PANEL_SELECT);
+            panel(dx, L->diff_y, L->diff_option_w, L->diff_option_h,
+                  COUP_PANEL_SELECT);
             text_col = diff_colors[j];
         } else {
             text_col = COUP_TEXT_GRAY;
         }
-        CUI_DISPLAY()->draw_text_sprite(dx, L->diff_y + L->diff_text_offset_y, diff_names[j], text_col);
+        /* Centred on the plate. The three labels are different widths, so a
+         * shared left edge could only ever have suited one of them. */
+        draw_centered_in(dx, L->diff_option_w,
+                         L->diff_y + L->diff_text_offset_y,
+                         diff_names[j], text_col);
     }
 
     /* Left/right arrows */

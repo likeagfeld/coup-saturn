@@ -10,6 +10,7 @@
 
 #include "cui_test_framework.h"
 #include "coup.h"
+#include "coup_ui.h"
 
 /*============================================================================
  * The arithmetic
@@ -124,4 +125,41 @@ CUI_TEST(centring_follows_the_font_advance)
     CUI_ASSERT_EQ(128, coup_centre_x(320, assumed_w));
     CUI_ASSERT_EQ(16, coup_centre_x(320, measured_w)
                       - coup_centre_x(320, assumed_w));
+}
+
+/*============================================================================
+ * A plate must be able to hold its widest label
+ *============================================================================*/
+
+CUI_TEST(every_difficulty_label_fits_its_plate)
+{
+    /* The settings screen draws three difficulty options on identical plates.
+     * They shipped 42 px wide on 44 px spacing while "Medium" measures 48 px,
+     * so that label overflowed its own plate by 6 px AND ran to x 212 when the
+     * next plate began at 206 - overlapping a neighbour.
+     *
+     * A plate exists to frame its label, so it must be sized from the WIDEST
+     * label rather than from a round number. */
+    static const char* const names[3] = { "Easy", "Medium", "Hard" };
+    const int plate_w = COUP_UI.settings.diff_option_w;
+    const int spacing = COUP_UI.settings.diff_option_spacing;
+    int j;
+
+    for (j = 0; j < 3; j++) {
+        int text_w = 0;
+        while (names[j][text_w]) {
+            text_w++;
+        }
+        text_w *= COUP_FONT_ADVANCE;
+
+        /* Fits its plate... */
+        CUI_ASSERT(text_w <= plate_w);
+        /* ...and centred, stays inside it on both sides. */
+        CUI_ASSERT(coup_centre_x(plate_w, text_w) >= 0);
+        CUI_ASSERT(coup_centre_x(plate_w, text_w) + text_w <= plate_w);
+    }
+
+    /* Plates cannot touch, or a selection highlight would run into its
+     * neighbour. */
+    CUI_ASSERT(spacing > plate_w);
 }

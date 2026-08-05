@@ -546,13 +546,18 @@ static const coup_ui_t __attribute__((unused)) COUP_UI = {
         .diff_panel       = {30, 98, 270, 20},   /* y - 2 */
         .diff_label_x     = 52,
         .diff_cursor_x    = 36,
-        .diff_option_x    = 120,
-        .diff_option_spacing = 44,
-        .diff_option_w    = 42,
+        /* Sized from the WIDEST label, not from a round number. At a 42 px
+         * plate on 44 px spacing, "Medium" (6 chars, 48 px) overflowed its
+         * own plate by 6 px and its text ran to 212 while the next plate
+         * started at 206 - the label overlapped a neighbouring plate. 52 px
+         * holds the widest label with 2 px either side. */
+        .diff_option_x    = 112,
+        .diff_option_spacing = 58,
+        .diff_option_w    = 52,
         .diff_option_h    = 16,
         .diff_text_offset_y = 2,
         .diff_arrow_left_offset = -14,
-        .diff_arrow_right_offset = 134,
+        .diff_arrow_right_offset = 172,
         .hint_row         = 25,
         .hint_left_col    = 4,
         .hint_right_col   = 30,
