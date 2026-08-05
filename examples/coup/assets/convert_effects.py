@@ -371,13 +371,38 @@ def main():
         print(f"  ui {name:12}  1 frame  {w:3}x{h:<3} "
               f"{keyed*100:4.1f}% keyed  {len(blobs[0]):>6,} B")
 
-    # The logo, keyed on its dark backing rather than magenta. It lives in
-    # logo/ rather than ui/ in the pack, so it is handled explicitly.
-    logo = os.path.join(args.pack_dir, "logo", "L1_wordmark.png")
+    # The wordmark.
+    #
+    # PREFER couptitlelogo.png. The pack's L1_wordmark.png is CROPPED - ink
+    # runs to row 63 of 64, so the letterforms lose their baseline and no code
+    # change can recover it. The replacement is 2172x724 with clean margins on
+    # every side (156 top, 91 bottom, 153/157 sides) and is already keyed on
+    # magenta, so it goes through the normal keyed path and gets de-fringed
+    # like every other sprite.
+    #
+    # Its ink box is 1862x477, aspect 3.90, which at 256 wide is 65 tall - it
+    # fits the 256x64 slot almost exactly with no distortion worth the name.
+    logo = "Official Art/couptitlelogo.png"
+    logo_mask = None
+    if not os.path.exists(logo):
+        logo = os.path.join(args.pack_dir, "logo", "L1_wordmark.png")
+        logo_mask = dark_border_mask
     if os.path.exists(logo):
         im = Image.open(logo).convert("RGB")
+        if logo_mask is None:
+            # Crop to the ink, keep a small even margin, then fit the slot.
+            import numpy as np
+            a = np.asarray(im).astype(int)
+            k = ((a[:, :, 0] > 150) & (a[:, :, 2] > 150) & (a[:, :, 1] < 110))
+            rows = np.where((~k).sum(axis=1) > 0)[0]
+            cols = np.where((~k).sum(axis=0) > 0)[0]
+            pad = max(4, (rows.max() - rows.min()) // 20)
+            im = im.crop((max(0, cols.min() - pad), max(0, rows.min() - pad),
+                          min(im.size[0], cols.max() + 1 + pad),
+                          min(im.size[1], rows.max() + 1 + pad)))
+            im = im.resize((256, 64), Image.LANCZOS)
         idx, pal, w, h = quantize_sequence([im], "wordmark",
-                                           mask_fn=dark_border_mask)
+                                           mask_fn=logo_mask)
         keyed = verify(idx, pal, w, h, "wordmark")
         blobs = [pack_4bpp(idx[0], w, h)]
         singles.append(("wordmark", blobs, pal, w, h))
