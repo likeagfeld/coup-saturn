@@ -510,7 +510,7 @@ static void coup_render_title(const coup_state_t* st)
             if (screen_x + 64 <= 0) continue;
 
             /* Staggered animation: each character at different phase */
-            frame = (st->frame_count / 8 + i * 5) % COUP_ANIM_FRAMES;
+            frame = (st->frame_count / COUP_ANIM_HOLD_FRAMES + i * 5) % COUP_ANIM_FRAMES;
             portrait_medallion(screen_x, L->portrait_y, 64, 96);
             coup_anim_draw_scaled(i, frame, screen_x, L->portrait_y, 64, 96);
         }
@@ -1847,7 +1847,7 @@ static void render_your_hand(const coup_state_t* st)
              * downscale blockiness. */
             coup_ui_draw(card0, H->card0_x, H->card0_y);
         } else if (coup_anim_loaded() && c0 < COUP_NUM_CHARACTERS) {
-            int frame = (st->frame_count / 8 + c0 * 5) % COUP_ANIM_FRAMES;
+            int frame = (st->frame_count / COUP_ANIM_HOLD_FRAMES + c0 * 5) % COUP_ANIM_FRAMES;
             portrait_medallion(H->card0_x, H->card0_y, 32, 48);
             /* Portraits are authored at 64x96; the hand slots are
              * 32x48, so VDP1 scales them down here. */
@@ -1887,7 +1887,7 @@ static void render_your_hand(const coup_state_t* st)
              * downscale blockiness. */
             coup_ui_draw(card1, H->card1_x, H->card1_y);
         } else if (coup_anim_loaded() && c1 < COUP_NUM_CHARACTERS) {
-            int frame = (st->frame_count / 8 + c1 * 5) % COUP_ANIM_FRAMES;
+            int frame = (st->frame_count / COUP_ANIM_HOLD_FRAMES + c1 * 5) % COUP_ANIM_FRAMES;
             portrait_medallion(H->card1_x, H->card1_y, 32, 48);
             /* Portraits are authored at 64x96; the hand slots are
              * 32x48, so VDP1 scales them down here. */

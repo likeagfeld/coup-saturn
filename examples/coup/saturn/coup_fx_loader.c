@@ -137,8 +137,18 @@ bool coup_fx_draw_scaled(int fx, int frame, int cx, int cy, int scale_num,
     w = info->w * scale_num / scale_den;
     h = info->h * scale_num / scale_den;
 
-    return saturn_vdp1_draw_sprite_scaled(cx - w / 2, cy - h / 2, w, h,
+    /* SOURCE size first, then DESTINATION - saturn_vdp1.h:322. CMDSIZE is
+     * built from src_w/src_h (saturn_vdp1.c:225) and is the texture extent
+     * VDP1 fetches; the quad vertices come from dst_w/dst_h (:230-235).
+     * These two pairs were passed the wrong way round, which made a 64x64
+     * effect fetch 128x128 - four times its own frame, running through the
+     * following frames and off the end of the last one - and paint it at
+     * native size at a position computed for double size. One swap produced
+     * all four reported symptoms at once: duplicated, partial, cut off and
+     * 32 px off centre. Gated by scripts/qa/qa_fx_geometry.py. */
+    return saturn_vdp1_draw_sprite_scaled(cx - w / 2, cy - h / 2,
                                           info->w, info->h,
+                                          w, h,
                                           s_fx_offsets[fx][frame],
                                           s_fx_bank[fx]);
 }

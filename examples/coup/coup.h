@@ -418,8 +418,21 @@ int  coup_centre_x(int container_w, int text_w);
 
 /* Frames each effect frame is held for. Declared here so the pacing can be
  * asserted on the host - MEASURED at 3 the shortest effect ran 0.30 s, which
- * reads as a flicker rather than an event. */
-#define COUP_FX_HOLD_FRAMES 14
+ * reads as a flicker rather than an event. At 14 the 6-frame effects ran
+ * 1.40 s and were still reported too fast; 18 puts them at 1.80-2.40 s. */
+#define COUP_FX_HOLD_FRAMES 18
+
+/* Frames each PORTRAIT idle frame is held for. This was a bare `/ 8` inline
+ * in coup_render.c and so was never revisited when the effect pacing was
+ * slowed from 3 to 14 - it ran a full 8-frame idle cycle in 8*8/60 = 1.07 s,
+ * which is the last animation on screen still moving at its original rate.
+ * At 20 the cycle is 2.67 s, a breathing idle rather than a fidget. Named
+ * here so tests/coup/test_pacing.c can assert it. */
+#define COUP_ANIM_HOLD_FRAMES 20
+
+/* NTSC field rate. Every pacing figure above is quoted in seconds at this
+ * rate, so the tests convert rather than restating magic numbers. */
+#define COUP_FIELD_HZ 60
 
 /* Rows of match recap shown on the game-over screen. Shared so the input
  * handler clamps scrolling to exactly what the renderer draws. */

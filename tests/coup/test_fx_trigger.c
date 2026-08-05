@@ -191,21 +191,17 @@ CUI_TEST(fx_a_full_assassinate_round_fires_the_right_sequence)
  * Effect pacing
  *============================================================================*/
 
-CUI_TEST(effects_are_slow_enough_to_read)
-{
-    /* MEASURED on hardware at COUP_FX_HOLD_FRAMES = 3: a 6-frame effect ran
-     * 0.30 s and an 8-frame one 0.40 s. That reads as a flicker, not an
-     * event - it was reported as "animations are too quick".
-     *
-     * Half a second is the floor for something a player is meant to notice
-     * and identify. This asserts the SHORTEST effect clears it. */
-    const int shortest_effect_frames = 6;
-    const int hz = 60;
-    int ms = shortest_effect_frames * COUP_FX_HOLD_FRAMES * 1000 / hz;
-
-    CUI_ASSERT(ms >= 500);
-
-    /* ...and the longest does not stall the turn. The server's tightest
-     * window is 12 s; an effect must be a fraction of that. */
-    CUI_ASSERT(8 * COUP_FX_HOLD_FRAMES * 1000 / hz <= 2000);
-}
+/* Effect PACING used to be asserted here as well as in test_pacing.c. It is
+ * now asserted only there.
+ *
+ * Two files bounding the same quantity is how bounds drift, and this pair
+ * drifted in the way that matters: the ceiling here was written as 2000 ms
+ * when COUP_FX_HOLD_FRAMES was 14 and the longest effect ran 1867 ms - set
+ * just above the value it was measuring, so it could only ever ratify the
+ * present state. When the pacing was slowed again in response to a second
+ * "still too fast" report, this ceiling failed the fix rather than the
+ * defect. Its own justification (the server's tightest window is 12 s, so an
+ * effect must be a fraction of it) never supported a bound that tight.
+ *
+ * This file is about the TRIGGER - which effect fires, for which action, at
+ * which seat. Duration lives in test_pacing.c, in seconds. */
