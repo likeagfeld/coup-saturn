@@ -126,6 +126,15 @@ static int text_px_w(const char* s)
 #endif
 }
 
+int coup_centre_x(int container_w, int text_w)
+{
+    int x = (container_w - text_w) / 2;
+
+    /* A label wider than its container clamps left. A negative x would wrap
+     * on VDP1 rather than clip, putting the label on the far right. */
+    return x < 0 ? 0 : x;
+}
+
 /**
  * Draw `text` horizontally centred on screen at grid row `row`.
  *
@@ -137,12 +146,9 @@ static int text_px_w(const char* s)
  */
 static void draw_centered(int row, const char* text, uint32_t color)
 {
-    int x = (COUP_SCREEN_W - text_px_w(text)) / 2;
-
-    if (x < 0) {
-        x = 0;
-    }
-    CUI_DISPLAY()->draw_text_sprite(x, row * COUP_FONT_ROW_H, text, color);
+    CUI_DISPLAY()->draw_text_sprite(coup_centre_x(COUP_SCREEN_W,
+                                                 text_px_w(text)),
+                                    row * COUP_FONT_ROW_H, text, color);
 }
 
 #ifdef __SATURN__
@@ -588,7 +594,9 @@ static void coup_render_settings(const coup_state_t* st)
 
     /* Header */
     panel_r(L->header_panel, COUP_PANEL_HEADER);
-    draw_at(L->header_col, L->header_row, "Settings", COUP_TEXT_YELLOW);
+    /* Centred by measurement. At col 14 this sat at x 112 with a width of
+     * 64, centring on 144 - 16 px left of the panel, whose centre is 160. */
+    draw_centered(L->header_row, "Settings", COUP_TEXT_YELLOW);
 
     /* Bot difficulty - single setting */
     panel_r(L->diff_panel, COUP_PANEL_MID);
@@ -668,9 +676,12 @@ static void coup_render_rules(const coup_state_t* st)
     hline(L->nav_bar.x, L->nav_hline_y, L->nav_bar.w, COUP_ACCENT_BLUE);
 
     /* Header */
-    draw_at(L->header_col, L->header_row,
-            pg == 0 ? " CHARACTER REFERENCE" : " HOW TO PLAY COUP",
-            COUP_TEXT_YELLOW);
+    /* Two different strings shared one fixed column, so at most one of them
+     * could ever have been centred; the leading space was a nudge for the
+     * other. Measuring each string centres both. */
+    draw_centered(L->header_row,
+                  pg == 0 ? "CHARACTER REFERENCE" : "HOW TO PLAY COUP",
+                  COUP_TEXT_YELLOW);
 
     /* Rules page text — page 0 is character reference, pages 1-5 are rules */
     switch (pg) {

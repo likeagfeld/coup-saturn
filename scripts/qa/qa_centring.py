@@ -41,12 +41,13 @@ SRC = "examples/coup/coup_render.c"
 
 # A position is "computed" if it is derived from the string being drawn.
 COMPUTED = re.compile(
-    r"text_px_w|button_centered|_px_w\(|"
+    r"text_px_w|button_centered|draw_centered|coup_centre_x|_px_w\(|"
     r"\(\s*COUP_SCREEN_W\s*-\s*\w+\s*\)\s*/\s*2|"
     r"\(\s*\w+_w\s*-\s*\w+\s*\)\s*/\s*2|"
     r"strlen\s*\(")
 
-TEXT_CALL = re.compile(r"\b(draw_at|draw_text_sprite|button_centered)\s*\(")
+TEXT_CALL = re.compile(
+    r"\b(draw_at|draw_text_sprite|button_centered|draw_centered)\s*\(")
 PLATE_CALL = re.compile(r"\b(panel|panel_r|panel_lit)\s*\(")
 
 
@@ -80,7 +81,7 @@ def audit(body, base_line):
         if not TEXT_CALL.search(s):
             continue
         kind = "computed" if COMPUTED.search(s) else "literal"
-        if "button_centered" in s:
+        if "button_centered" in s or "draw_centered" in s:
             kind = "computed"
         rows.append((base_line + ln, kind, s[:88]))
     return rows

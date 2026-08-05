@@ -405,6 +405,17 @@ typedef struct {
     int blocker_id;
 } coup_fx_prev_t;
 
+/**
+ * Left edge that centres `text_w` pixels inside `container_w` pixels.
+ *
+ * Pure arithmetic, at global scope so it can be unit tested on the host.
+ * Most screens are behind online play and cannot be reached in an offline
+ * capture, so the centring RULE is proven here rather than screen by screen.
+ * Never returns a negative x - a label wider than its container is clamped to
+ * the left edge, because a negative x wraps on VDP1 rather than clipping.
+ */
+int  coup_centre_x(int container_w, int text_w);
+
 /* Effect trigger - pure logic, unit tested on the host. */
 int  coup_fx_for_action(int action);
 int  coup_fx_on_transition(const coup_fx_prev_t* prev, const coup_state_t* st);
