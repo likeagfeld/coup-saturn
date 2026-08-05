@@ -39,10 +39,61 @@ def to_rgb555(r, g, b):
     return ((b >> 3) << 10) | ((g >> 3) << 5) | (r >> 3)
 
 
+# Median luminance a scene must reach to be readable on a CRT.
+#
+# MEASURED on the delivered art: B4_connecting has a median of 18.0 and even
+# its brightest decile only reaches 57; B2_game_table is median 23.7. Those
+# are the two screens reported as "very dark" from hardware. B1_title, which
+# reads fine, is median 78.3. Conversion is not the cause - it costs only
+# ~3 luma to quantization.
+#
+# 48 sits well above the unreadable pair and well below the title, so scenes
+# that are already comfortable are left completely alone.
+TARGET_MEDIAN = 48.0
+
+# Never lift harder than this. A gamma below it crushes the highlights flat
+# and turns a moody interior into grey soup - the art is SUPPOSED to be dim,
+# it just cannot be invisible.
+MIN_GAMMA = 0.62
+
+
+def lift_shadows(img, name=""):
+    """Gamma-lift a scene that is too dark to read, and only that far.
+
+    Returns (image, gamma_applied). Gamma 1.0 means untouched.
+    """
+    lum = img.convert("L")
+    hist = lum.histogram()
+    total = sum(hist)
+    acc = 0
+    median = 0
+    for i, n in enumerate(hist):
+        acc += n
+        if acc >= total / 2:
+            median = i
+            break
+
+    if median >= TARGET_MEDIAN or median <= 0:
+        return img, 1.0
+
+    # out = 255 * (in/255)^gamma ; solve for the gamma that puts the median
+    # exactly on target, then clamp.
+    import math
+    gamma = math.log(TARGET_MEDIAN / 255.0) / math.log(median / 255.0)
+    gamma = max(MIN_GAMMA, min(1.0, gamma))
+    if gamma >= 0.999:
+        return img, 1.0
+
+    lut = [min(255, int(round(255.0 * ((i / 255.0) ** gamma))))
+           for i in range(256)]
+    return img.point(lut * 3), gamma
+
+
 def convert(src_path):
     """Return (bitmap_bytes, palette_list, preview_image)."""
     img = Image.open(src_path).convert("RGB")
     img = img.resize((VISIBLE_W, VISIBLE_H), Image.LANCZOS)
+    img, _gamma = lift_shadows(img, src_path)
 
     quant = img.quantize(colors=MAX_COLORS, method=Image.MEDIANCUT)
     src_palette = quant.getpalette()[: MAX_COLORS * 3]
@@ -268,6 +319,9 @@ def main():
 
         bitmap, palette, preview = convert(path)
         stats = verify(bitmap, palette)
+        _probe = Image.open(path).convert("RGB").resize((VISIBLE_W, VISIBLE_H),
+                                                        Image.LANCZOS)
+        _, gamma = lift_shadows(_probe)
         scenes.append((name, bitmap, palette, path))
 
         if args.preview_dir:
@@ -275,7 +329,8 @@ def main():
             preview.save(os.path.join(args.preview_dir, f"bg-{name}.png"))
 
         print(f"  {name:<10} {os.path.basename(path):<24} "
-              f"{stats['colours_used']:>3} colours")
+              f"{stats['colours_used']:>3} colours"
+              + (f"  shadow-lift gamma {gamma:.2f}" if gamma < 1.0 else ""))
 
     total = len(scenes) * VISIBLE_W * VISIBLE_H
 

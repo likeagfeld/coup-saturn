@@ -30,6 +30,18 @@ import sys
 
 from PIL import Image, ImageFilter
 
+# The converter applies a bounded shadow lift to scenes that are too dark to
+# read (see convert_backgrounds.lift_shadows). That is a deliberate grade, not
+# a conversion loss, so the reference must carry it too - otherwise this gate
+# measures the artistic decision instead of the quantization, and reports RED
+# on art that converted perfectly.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "examples", "coup", "assets"))
+try:
+    from convert_backgrounds import lift_shadows
+except ImportError:
+    lift_shadows = None
+
 PSNR_MIN = 26.0        # below this, degradation is visible
 PALETTE_USE_MIN = 0.85  # must use at least 85% of available slots
 DETAIL_MIN = 0.55       # retain at least 55% of high-frequency energy
@@ -114,6 +126,8 @@ def check_background(scene, src_png, bin_path):
     out.putdata([rgb555_to_rgb(pal[b]) for b in data[: w * h]])
 
     ref = Image.open(src_png).convert("RGB").resize((w, h), Image.LANCZOS)
+    if lift_shadows is not None:
+        ref, _g = lift_shadows(ref)
 
     p, e = psnr(out, ref), mae(out, ref)
     used = len(set(data))
