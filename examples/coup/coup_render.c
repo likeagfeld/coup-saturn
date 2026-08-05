@@ -1549,7 +1549,10 @@ static void render_your_hand(const coup_state_t* st)
         if (coup_anim_loaded() && c0 < COUP_NUM_CHARACTERS) {
             int frame = (st->frame_count / 8 + c0 * 5) % COUP_ANIM_FRAMES;
             portrait_medallion(H->card0_x, H->card0_y, 32, 48);
-            coup_anim_draw(c0, frame, H->card0_x, H->card0_y);
+            /* Portraits are authored at 64x96; the hand slots are
+             * 32x48, so VDP1 scales them down here. */
+            coup_anim_draw_scaled(c0, frame, H->card0_x,
+                                  H->card0_y, 32, 48);
         } else {
             uint32_t color = (c0 < COUP_NUM_CHARACTERS) ? coup_card_color(c0) : COUP_PANEL_MID;
             panel(H->card0_x, H->card0_y, 32, 48, color);
@@ -1573,7 +1576,10 @@ static void render_your_hand(const coup_state_t* st)
         if (coup_anim_loaded() && c1 < COUP_NUM_CHARACTERS) {
             int frame = (st->frame_count / 8 + c1 * 5) % COUP_ANIM_FRAMES;
             portrait_medallion(H->card1_x, H->card1_y, 32, 48);
-            coup_anim_draw(c1, frame, H->card1_x, H->card1_y);
+            /* Portraits are authored at 64x96; the hand slots are
+             * 32x48, so VDP1 scales them down here. */
+            coup_anim_draw_scaled(c1, frame, H->card1_x,
+                                  H->card1_y, 32, 48);
         } else {
             uint32_t color = (c1 < COUP_NUM_CHARACTERS) ? coup_card_color(c1) : COUP_PANEL_MID;
             panel(H->card1_x, H->card1_y, 32, 48, color);

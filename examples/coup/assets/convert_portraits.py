@@ -36,9 +36,18 @@ from PIL import Image
 
 CHARACTERS = ["duke", "assassin", "captain", "ambassador", "contessa"]
 
-SPRITE_W = 32
-SPRITE_H = 48
-FRAME_COUNT = 24
+# Rendered at NATIVE display size. The portraits were previously 32x48 drawn
+# at 64x96, i.e. every pixel doubled, which is what made them look blocky -
+# 87% of the official art's detail was discarded and the remainder magnified.
+# Generating at 64x96 quadruples the detail for the same on-screen size.
+#
+# Budget: 64*96 4bpp = 3072 B/frame. At 12 frames x 5 characters that is
+# 184,320 B against 273,232 B of WRAM-H headroom, leaving ~181 KB. Trading
+# frame count for resolution is the right way round here: the motion is a slow
+# drift, which reads fine at 12 frames, whereas blockiness is visible always.
+SPRITE_W = 64
+SPRITE_H = 96
+FRAME_COUNT = 12
 MAX_COLORS = 15          # index 0 stays transparent and unused
 
 # Bust window inside the card, as fractions: inside the coloured border and

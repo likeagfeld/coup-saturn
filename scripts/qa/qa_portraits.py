@@ -24,7 +24,7 @@ import sys
 DATA = "examples/coup/saturn/coup_anim_sprite_data.h"
 SPRITES = "examples/coup/saturn/coup_anim_sprites.h"
 
-SPRITE_W, SPRITE_H = 32, 48
+SPRITE_W, SPRITE_H = 64, 96
 EXPECT_FRAME_BYTES = SPRITE_W * SPRITE_H // 2
 
 
