@@ -44,6 +44,82 @@ def is_key(px):
     return r >= KEY_R_MIN and g <= KEY_G_MAX and b >= KEY_B_MIN
 
 
+def magenta_score(px):
+    """How much flat magenta is mixed into this pixel, 0.0 to 1.0.
+
+    Magenta is high red AND high blue with low green, so the green deficit
+    relative to the red/blue floor is a direct measure of contamination.
+    """
+    r, g, b = px[:3]
+    lo = min(r, b)
+    if lo <= g:
+        return 0.0
+    return (lo - g) / 255.0
+
+
+# A pixel this contaminated is more key than artwork; below it we unmix.
+FRINGE_KEY = 0.45
+# Any contamination at all above this gets unmixed.
+FRINGE_MIN = 0.10
+
+
+def defringe(im):
+    """Remove magenta bleed from the key edge.
+
+    The strict key catches flat #FF00FF, but resampling the source produced
+    PARTIAL magenta along every edge - measured examples (231,33,165),
+    (247,99,156), (198,41,181). Those fail the key test, survive as opaque
+    artwork, and the quantizer then spends real palette slots on them:
+    MEASURED 45 magenta palette entries across 16 sprites, every one of which
+    paints a visible fringe.
+
+    Widening the key would be the wrong fix - it eats genuine purple and red
+    artwork. Instead each contaminated pixel is UNMIXED: replaced by the
+    average of its uncontaminated neighbours, so the edge keeps its real
+    colour. Pixels that are mostly key become key.
+
+    Returns a new image; the caller keys it as usual afterwards.
+    """
+    w, h = im.size
+    src = im.load()
+    out = Image.new("RGB", (w, h))
+    dst = out.load()
+
+    for y in range(h):
+        for x in range(w):
+            px = src[x, y]
+            if is_key(px):
+                dst[x, y] = px          # leave flat key alone; keyed later
+                continue
+            score = magenta_score(px)
+            if score < FRINGE_MIN:
+                dst[x, y] = px
+                continue
+            if score >= FRINGE_KEY:
+                dst[x, y] = (255, 0, 255)   # mostly key - make it key
+                continue
+            # Unmix from clean neighbours.
+            acc = [0, 0, 0]
+            n = 0
+            for dy in (-2, -1, 0, 1, 2):
+                for dx in (-2, -1, 0, 1, 2):
+                    nx, ny = x + dx, y + dy
+                    if not (0 <= nx < w and 0 <= ny < h):
+                        continue
+                    q = src[nx, ny]
+                    if is_key(q) or magenta_score(q) >= FRINGE_MIN:
+                        continue
+                    acc[0] += q[0]
+                    acc[1] += q[1]
+                    acc[2] += q[2]
+                    n += 1
+            if n:
+                dst[x, y] = (acc[0] // n, acc[1] // n, acc[2] // n)
+            else:
+                dst[x, y] = (255, 0, 255)   # nothing clean nearby - key it
+    return out
+
+
 # The logo art is the one asset NOT delivered on magenta - it sits on a dark
 # backing (MEASURED: L1_wordmark.png is 256x64, 15 colours, no alpha channel).
 # A plain "dark pixels are transparent" threshold is wrong here: it also erases
@@ -112,6 +188,8 @@ def quantize_sequence(frames, name, mask_fn=None):
     masks = []
     for im in frames:
         rgb = im.convert("RGB")
+        if mask_fn is None:                 # magenta-keyed art
+            rgb = defringe(rgb)
         px = list(rgb.getdata())
         if mask_fn is None:
             m = [not is_key(p) for p in px]
