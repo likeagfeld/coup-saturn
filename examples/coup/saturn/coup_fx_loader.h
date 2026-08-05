@@ -33,6 +33,15 @@ bool coup_fx_loaded(void);
  */
 bool coup_fx_draw(int fx, int frame, int x, int y);
 
+/**
+ * Draw an effect frame scaled about the point (cx, cy).
+ *
+ * The authored sizes (32x32 to 64x64) are small against 320x224 and read as a
+ * flicker rather than an event. Scaling is done by VDP1 at no CPU cost.
+ */
+bool coup_fx_draw_scaled(int fx, int frame, int cx, int cy, int scale_num,
+                         int scale_den);
+
 /** Frame count for an effect, so callers can time a sequence. */
 int coup_fx_frames(int fx);
 

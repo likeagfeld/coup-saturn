@@ -186,3 +186,26 @@ CUI_TEST(fx_a_full_assassinate_round_fires_the_right_sequence)
     CUI_ASSERT_EQ(6, fired[1]);   /* challenge   */
     CUI_ASSERT_EQ(5, fired[2]);   /* block       */
 }
+
+/*============================================================================
+ * Effect pacing
+ *============================================================================*/
+
+CUI_TEST(effects_are_slow_enough_to_read)
+{
+    /* MEASURED on hardware at COUP_FX_HOLD_FRAMES = 3: a 6-frame effect ran
+     * 0.30 s and an 8-frame one 0.40 s. That reads as a flicker, not an
+     * event - it was reported as "animations are too quick".
+     *
+     * Half a second is the floor for something a player is meant to notice
+     * and identify. This asserts the SHORTEST effect clears it. */
+    const int shortest_effect_frames = 6;
+    const int hz = 60;
+    int ms = shortest_effect_frames * COUP_FX_HOLD_FRAMES * 1000 / hz;
+
+    CUI_ASSERT(ms >= 500);
+
+    /* ...and the longest does not stall the turn. The server's tightest
+     * window is 12 s; an effect must be a fraction of that. */
+    CUI_ASSERT(8 * COUP_FX_HOLD_FRAMES * 1000 / hz <= 2000);
+}

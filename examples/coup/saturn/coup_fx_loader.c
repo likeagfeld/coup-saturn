@@ -109,6 +109,40 @@ bool coup_fx_draw(int fx, int frame, int x, int y)
                                    s_fx_offsets[fx][frame], s_fx_bank[fx]);
 }
 
+bool coup_fx_draw_scaled(int fx, int frame, int cx, int cy, int scale_num,
+                         int scale_den)
+{
+    const coup_fx_info_t* info;
+    int w, h;
+
+    if (!s_loaded || fx < 0 || fx >= COUP_FX_COUNT || scale_den <= 0) {
+        return false;
+    }
+    info = &coup_fx_info[fx];
+    if (info->frames <= 0) {
+        return false;
+    }
+    frame %= info->frames;
+    if (frame < 0) {
+        frame += info->frames;
+    }
+    if (frame >= 16) {
+        frame = 15;
+    }
+
+    /* Scale about the CENTRE. The effects are authored 32x32 to 64x64, which
+     * is small against a 320x224 screen - measured on hardware they read as a
+     * flicker rather than an event. Growing them from the centre keeps them
+     * anchored on the table where the action happens. */
+    w = info->w * scale_num / scale_den;
+    h = info->h * scale_num / scale_den;
+
+    return saturn_vdp1_draw_sprite_scaled(cx - w / 2, cy - h / 2, w, h,
+                                          info->w, info->h,
+                                          s_fx_offsets[fx][frame],
+                                          s_fx_bank[fx]);
+}
+
 bool coup_ui_draw(int ui, int x, int y)
 {
     const coup_fx_info_t* info;

@@ -262,7 +262,12 @@ static int safe_copy(char* dst, const char* src, int max_len)
  * spec section 8 is unaffected.
  *============================================================================*/
 
-#define COUP_FX_HOLD_FRAMES 3
+/* COUP_FX_HOLD_FRAMES is declared in coup.h so the pacing is host-testable. */
+
+/* Effects are authored 32x32 to 64x64, small against a 320x224 screen. VDP1
+ * scales sprites for free, so they are drawn at 2x about their centre. */
+#define COUP_FX_SCALE_NUM 2
+#define COUP_FX_SCALE_DEN 1
 
 /* Sentinel for "no player", per coup_table_view.h. */
 #define COUP_FX_NO_PLAYER 0xFF
@@ -405,8 +410,10 @@ static void fx_observe(const coup_state_t* st)
     if (fx != COUP_FXID_NONE && coup_fx_loaded()) {
         s_fx_active = fx;
         s_fx_tick = 0;
-        s_fx_x = (COUP_SCREEN_W - 64) / 2;
-        s_fx_y = 84;
+        /* Centre point now, not a top-left corner - the scaled draw grows
+         * about this point. */
+        s_fx_x = COUP_SCREEN_W / 2;
+        s_fx_y = 84 + 32;
     }
     coup_fx_remember(&s_fx_prev, st);
 }
@@ -429,7 +436,8 @@ static void fx_render(void)
         s_fx_active = COUP_FXID_NONE;
         return;
     }
-    coup_fx_draw(s_fx_active, frame, s_fx_x, s_fx_y);
+    coup_fx_draw_scaled(s_fx_active, frame, s_fx_x, s_fx_y,
+                        COUP_FX_SCALE_NUM, COUP_FX_SCALE_DEN);
     s_fx_tick++;
 }
 #endif
