@@ -89,9 +89,51 @@ def lift_shadows(img, name=""):
     return img.point(lut * 3), gamma
 
 
+# A panel border from the source sheet shows up as a column far brighter than
+# its neighbours, with a DIFFERENT image continuing past it.
+SEAM_RATIO = 3.0
+# Never trim more than this - a real architectural highlight in the middle of a
+# scene must not be mistaken for a panel edge.
+SEAM_MAX_TRIM = 0.25
+
+
+def trim_panel_seam(img):
+    """Cut off a neighbouring panel that bled in from the source sheet.
+
+    MEASURED on the delivered art: B5_victory carries a bright border column
+    at x=285 with a different, darker scene continuing to its right; the same
+    fault appears in B4_connecting (x=272) and B6_defeat (x=294) at 4.4-5.5x
+    the surrounding brightness. The panels were cut from a sheet slightly too
+    wide, so each kept a slice of its neighbour.
+
+    Returns (image, trimmed_px). The kept region is rescaled back to full
+    width, which stretches it very slightly - far less objectionable than a
+    stripe of the wrong scene down the edge.
+    """
+    import numpy as np
+
+    a = np.asarray(img.convert("RGB")).astype(float)
+    h, w, _ = a.shape
+    col = a.mean(axis=(0, 2))
+    limit = int(w * (1.0 - SEAM_MAX_TRIM))
+
+    best = None
+    for x in range(limit, w - 2):
+        nb = (col[max(0, x - 4):x].mean() + col[x + 1:x + 5].mean()) / 2.0
+        if col[x] > nb * SEAM_RATIO and col[x] > 8:
+            ratio = col[x] / max(nb, 1.0)
+            if best is None or ratio > best[1]:
+                best = (x, ratio)
+    if best is None:
+        return img, 0
+    x = best[0]
+    return img.crop((0, 0, x, h)), w - x
+
+
 def convert(src_path):
     """Return (bitmap_bytes, palette_list, preview_image)."""
     img = Image.open(src_path).convert("RGB")
+    img, _trim = trim_panel_seam(img)
     img = img.resize((VISIBLE_W, VISIBLE_H), Image.LANCZOS)
     img, _gamma = lift_shadows(img, src_path)
 
@@ -322,6 +364,7 @@ def main():
         _probe = Image.open(path).convert("RGB").resize((VISIBLE_W, VISIBLE_H),
                                                         Image.LANCZOS)
         _, gamma = lift_shadows(_probe)
+        _, trim = trim_panel_seam(Image.open(path).convert("RGB"))
         scenes.append((name, bitmap, palette, path))
 
         if args.preview_dir:
@@ -330,6 +373,7 @@ def main():
 
         print(f"  {name:<10} {os.path.basename(path):<24} "
               f"{stats['colours_used']:>3} colours"
+              + (f"  seam-trim {trim}px" if trim else "")
               + (f"  shadow-lift gamma {gamma:.2f}" if gamma < 1.0 else ""))
 
     total = len(scenes) * VISIBLE_W * VISIBLE_H
