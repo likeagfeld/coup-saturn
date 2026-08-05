@@ -14,6 +14,7 @@
 
 #include "coup.h"
 #include "coup_ui.h"
+#include "coup_shading.h"
 #include "cui_pal.h"
 
 #include <stdio.h>
@@ -52,13 +53,28 @@ static void panel(int x, int y, int w, int h, uint32_t color)
     CUI_DISPLAY()->draw_rect(x, y, w, h, color);
 }
 
-#ifdef __SATURN__
-/* Gouraud pool slots, uploaded once by coup_render_init_shading(). */
+/* Gouraud pool slots. Outside the __SATURN__ guard because they are just
+ * integer identifiers and the shared screen code names them when it asks for
+ * a gradient - off-Saturn panel_grd() ignores the value. */
 enum {
     COUP_GRD_PANEL = 0,   /* soft top-lit panel   */
     COUP_GRD_RAISED,      /* stronger, for plates */
+
+    /* Animated slots. Re-uploaded every frame from coup_shading.c, which
+     * generates them as pure functions of a phase counter so the motion is
+     * host-testable (tests/coup/test_coup_shading.c). Gouraud is write-only
+     * on VDP1, so an animated gradient costs exactly what a flat fill costs;
+     * the only per-frame price is 8 bytes of table upload each. */
+    COUP_GRD_SHEEN,       /* travelling highlight, title wordmark  */
+    COUP_GRD_HALO,        /* amber breath, seat whose turn it is   */
+    COUP_GRD_PULSE,       /* lobby slot that has readied up        */
+    COUP_GRD_OCCUPIED,    /* lobby slot with a player in it        */
+    COUP_GRD_EMPTY,       /* lobby slot with nobody in it          */
+    COUP_GRD_SPOTLIGHT,   /* winner's portrait on the game over    */
     COUP_GRD_COUNT
 };
+
+#ifdef __SATURN__
 
 /**
  * Upload the gradient tables. Call once after the PAL is up.
@@ -75,6 +91,41 @@ void coup_render_init_shading(void)
 
     saturn_vdp1_gouraud_vshade(tbl, +9, -8);
     saturn_vdp1_set_gouraud_table(COUP_GRD_RAISED, tbl);
+}
+
+/**
+ * Re-upload the ANIMATED gradients for this frame.
+ *
+ * Split from coup_render_init_shading() because these depend on a phase and
+ * the static two do not. Six tables is 48 VRAM writes per frame; the draws
+ * that use them cost nothing extra, because gouraud is a write-only VDP1 mode
+ * (ST-013-R3 section 5.3) - a shaded quad is the same command and the same
+ * fill as the flat quad it replaces.
+ *
+ * The generators live in coup_shading.c as pure functions of the phase, so
+ * every one of these is asserted on the host rather than by watching it.
+ */
+static void coup_render_update_shading(int phase)
+{
+    uint16_t tbl[4];
+
+    coup_shading_sheen(tbl, phase);
+    saturn_vdp1_set_gouraud_table(COUP_GRD_SHEEN, tbl);
+
+    coup_shading_halo(tbl, phase);
+    saturn_vdp1_set_gouraud_table(COUP_GRD_HALO, tbl);
+
+    coup_shading_pulse(tbl, phase);
+    saturn_vdp1_set_gouraud_table(COUP_GRD_PULSE, tbl);
+
+    coup_shading_wash(tbl, true);
+    saturn_vdp1_set_gouraud_table(COUP_GRD_OCCUPIED, tbl);
+
+    coup_shading_wash(tbl, false);
+    saturn_vdp1_set_gouraud_table(COUP_GRD_EMPTY, tbl);
+
+    coup_shading_spotlight(tbl, phase);
+    saturn_vdp1_set_gouraud_table(COUP_GRD_SPOTLIGHT, tbl);
 }
 #endif
 
@@ -98,6 +149,23 @@ static void panel_lit(int x, int y, int w, int h, uint32_t color, int slot)
     CUI_DISPLAY()->draw_rect(x, y, w, h, color);
 }
 #endif
+
+/**
+ * A panel shaded by a gouraud slot, falling back to a flat fill off-Saturn.
+ *
+ * Lets the shared screen code ask for a gradient without being wrapped in
+ * #ifdef at every call site. On the other platforms the gradient has no
+ * meaning and this is exactly panel().
+ */
+static void panel_grd(int x, int y, int w, int h, uint32_t color, int slot)
+{
+#ifdef __SATURN__
+    panel_lit(x, y, w, h, color, slot);
+#else
+    (void)slot;
+    panel(x, y, w, h, color);
+#endif
+}
 
 /**
  * Width in pixels of `s` in the currently active sprite font.
@@ -1096,22 +1164,32 @@ static void coup_render_lobby(const coup_state_t* st)
             const coup_player_t* p = &st->players[i];
             bool is_ready = p->is_self ? st->my_ready : p->ready;
 
+            /* An occupied slot is washed with light; see coup_shading.c. The
+             * design doc's lobby treatment asks for the seated players to
+             * read as lit and the empty chairs as recessed, at a glance. */
             if (is_cursor) {
-                panel(L->slot_x, sy, L->slot_w, L->slot_h, COUP_PANEL_LIGHT);
+                panel_grd(L->slot_x, sy, L->slot_w, L->slot_h,
+                          COUP_PANEL_LIGHT, COUP_GRD_OCCUPIED);
             } else if (is_ready) {
-                panel(L->slot_x, sy, L->slot_w, L->slot_h, COUP_PANEL_SELECT);
+                panel_grd(L->slot_x, sy, L->slot_w, L->slot_h,
+                          COUP_PANEL_SELECT, COUP_GRD_OCCUPIED);
             } else {
-                panel(L->slot_x, sy, L->slot_w, L->slot_h, COUP_PANEL_MID);
+                panel_grd(L->slot_x, sy, L->slot_w, L->slot_h,
+                          COUP_PANEL_MID, COUP_GRD_OCCUPIED);
             }
-            /* Ready indicator bar */
+            /* Ready indicator bar - this one PULSES, so a player who has
+             * readied up is visible without reading any text. */
             if (is_ready) {
-                panel(L->slot_x, sy, L->ready_bar_w, L->slot_h, COUP_ACCENT_GREEN);
+                panel_grd(L->slot_x, sy, L->ready_bar_w, L->slot_h,
+                          COUP_ACCENT_GREEN, COUP_GRD_PULSE);
             }
         } else if (is_cursor) {
             /* Cursor on empty "add bot" slot */
-            panel(L->slot_x, sy, L->slot_w, L->slot_h, COUP_PANEL_LIGHT);
+            panel_grd(L->slot_x, sy, L->slot_w, L->slot_h,
+                      COUP_PANEL_LIGHT, COUP_GRD_EMPTY);
         } else {
-            panel(L->slot_x, sy, L->slot_w, L->slot_h, COUP_PANEL_DARK);
+            panel_grd(L->slot_x, sy, L->slot_w, L->slot_h,
+                      COUP_PANEL_DARK, COUP_GRD_EMPTY);
         }
     }
 
@@ -2223,6 +2301,7 @@ void coup_render_screen(const coup_state_t* st)
          * the interloper, and makes the shading independent of whatever else
          * touches VDP1 VRAM. */
         coup_render_init_shading();
+        coup_render_update_shading(st->frame_count);
 
         if ((int)st->screen != s_last_screen) {
             s_last_screen = (int)st->screen;

@@ -81,6 +81,7 @@ SRCS += coup_qa_screen.c
 # Shared coup sources (keep in sync with Makefile COUP_*_SRCS)
 SRCS += $(COUP_SHARED)/coup_game.c
 SRCS += $(COUP_SHARED)/coup_render.c
+SRCS += $(COUP_SHARED)/coup_shading.c
 SRCS += $(COUP_SHARED)/coup_audio.c
 SRCS += $(COUP_SHARED)/coup_rules.c
 SRCS += $(COUP_SHARED)/coup_table_view.c

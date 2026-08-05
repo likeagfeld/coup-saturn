@@ -133,6 +133,7 @@ COUP_TEST_DIR := tests/coup
 COUP_TEST_SRCS := $(wildcard $(COUP_TEST_DIR)/*.c) \
                   $(COUP_GAME_SRCS) $(COUP_RULES_SRCS) $(COUP_BOT_SRCS) $(COUP_VIEW_SRCS) \
                   $(COUP_SRC_DIR)/coup_render.c \
+                  $(COUP_SRC_DIR)/coup_shading.c \
                   pal/saturn/saturn_bg.c \
                   pal/saturn/saturn_fade.c \
                   pal/saturn/saturn_vdp1.c \
@@ -159,9 +160,13 @@ $(BUILD_DIR)/$(COUP_TEST_DIR)/%.o: $(COUP_TEST_DIR)/%.c
 	$(CC) $(CFLAGS) -I$(TESTS_FW) -I$(COUP_SRC_DIR) -I$(TESTS_FW)/mocks -Ipal/saturn -c -o $@ $<
 
 # Coup source compilation
+# -Ipal/saturn so shared modules can use the PAL's PURE helpers on the host -
+# coup_shading.c builds its gouraud tables with saturn_vdp1_gouraud_word(),
+# which is a plain integer function and is already host-tested. This does not
+# pull in any Saturn-only code: those parts are behind #ifdef __SATURN__.
 $(BUILD_DIR)/$(COUP_SRC_DIR)/%.o: $(COUP_SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -I$(COUP_SRC_DIR) -c -o $@ $<
+	$(CC) $(CFLAGS) -I$(COUP_SRC_DIR) -Ipal/saturn -c -o $@ $<
 
 # Saturn PAL pure-logic compilation (host-testable parts only)
 $(BUILD_DIR)/pal/saturn/%.o: pal/saturn/%.c
