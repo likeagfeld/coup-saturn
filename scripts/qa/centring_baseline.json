@@ -1,7 +1,7 @@
 {
   "connecting": 5,
   "game": 0,
-  "game_over": 1,
+  "game_over": 4,
   "lobby": 24,
   "name_entry": 3,
   "rules": 83,
