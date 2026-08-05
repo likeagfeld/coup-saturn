@@ -105,3 +105,54 @@ prompt is in the conversation and asks for 512×160 with 10% empty margin.
   Gate J fails any build that ships with that defined.
 - **Another agent uses RetroArch on this machine.** The harness never
   enumerates or kills retroarch processes and binds port 55366, not 55355.
+
+---
+
+# Logo font — construction parameters (MEASURED 2026-08-05)
+
+`couptitlelogo.png` is now the shipped wordmark. It is also the reference for
+a full game font. The style is strictly geometric and the rules are measured,
+so the remaining work is drawing glyphs to a spec, not deriving one.
+
+## Measured from the four letters
+
+| parameter | value | ratio to cap |
+|---|---|---|
+| cap height | 477 px | 1.0 |
+| stroke width | 105 px | **cap ÷ 4.5** |
+| letter box | 431 × 477 | width = **0.90 × cap** |
+| letter gap | 43, 46, 46 px | **cap ÷ 10.6** |
+
+All four letters fall within 4 px of the same width. It is a MONOSPACED face:
+advance ≈ letter box + gap ≈ cap height.
+
+Style features, from the artwork: rounded OUTER corners, square INNER corners,
+and a diagonal slash cut into the C and the P.
+
+## Which cell size to build at
+
+```
+cell   cap  stroke  width  counter   verdict
+ 8px    7      2      6     2x3      works, and fits the existing 8px grid
+12px   11      2     10     6x7      works
+16px   15      3     14     8x9      works, but needs advance 16
+```
+
+**Build at 8×8.** The display font advances 8 on a 16 cell; a 16 px logo face
+would need advance 16, doubling the width of every heading and forcing a
+re-wrap of the rules pages and the game log. An 8×8 face drops into the grid
+untouched, exactly as `saturn_font_alagard_8x8.c` already does.
+
+## What is actually left
+
+95 glyphs drawn to those rules. A 7-segment or geometric-skeleton generator
+was considered and rejected: at a 6×7 box with 2 px strokes it produces
+acceptable digits and poor letters — K, M, W, X and S in particular. This
+needs hand-drawn glyphs in the measured style.
+
+Format to match: `pal/saturn/fonts/saturn_font_alagard_8x8.c` — 1bpp, 8 bytes
+per glyph, 95 glyphs from ASCII 32, `bytes_per_row_1bpp = 1`. Register it in
+`main_saturn.c` and point `COUP_FONT_BODY` (or a new `COUP_FONT_LOGO`) at it.
+
+**This is an upgrade, not an outstanding fix.** Body text is already the
+custom Alagard face everywhere; the built-in 8×8 is no longer drawn anywhere.
