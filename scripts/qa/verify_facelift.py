@@ -182,12 +182,57 @@ def gate_cram():
 
 
 # ------------------------------------------------------------ F: headroom
-KNOWN_HANG = 181312      # MEASURED: this build hung while G8 said GREEN
+# The old constants. KEPT ONLY AS A RECORD OF WHY THEY WERE WRONG.
+#
+# 181,312 was the headroom of one build that happened to hang, and the gate
+# treated it as a floor. It is not a floor - it is an upper bound on where
+# failure had ALREADY become catastrophic. Overlap begins far earlier and
+# presents as corruption long before it presents as a hang.
+#
+# The real limit is structural: SGL claims 0x40000 bytes of WORK-HI starting
+# at SortList, and .bss must not reach it (SGL302/DOC/210A_US/MEMORY.TXT:
+# "The SGL system uses 0x40000 bytes of the WORK-HI area for sprite and
+# scroll control"). MEASURED on this build: SortList = 0x060C0000, so the
+# old gate passed any _end up to 0x060CFD28 - 64,808 bytes INTO SGL's own
+# SortList / Zbuffer / SpriteBuf. It was 79,808 bytes too permissive, not
+# conservative.
+KNOWN_HANG = 181312
 SAFE_MARGIN = 15000
+
+# Read from the linked image, not hardcoded, so it self-corrects if SGLAREA
+# is ever customised (WORKAREA.TXT: "the work RAM area (default mode:
+# 060C0000~) can be customized").
+SGL_WORK_FALLBACK = 0x060C0000
+BSS_WARN_BYTES = 8192
+
+
+def sgl_work_base(mapfile, rawfile):
+    """Lowest address SGL claims in WRAM-H, read from the linked image.
+
+    SGLAREA.O declares SGL's work area as ABSOLUTE addresses, and SortList is
+    the lowest of them - so it, not the stack pointer, is the ceiling .bss
+    must not reach. Reading the VALUE out of game.raw rather than hardcoding
+    it means the gate follows a customised SGLAREA instead of going stale
+    (SGL302/DOC/210A_US/WORKAREA.TXT: "the work RAM area (default mode:
+    060C0000~) can be customized").
+    """
+    try:
+        m = open(mapfile, encoding="utf-8", errors="replace").read()
+        raw = open(rawfile, "rb").read()
+    except OSError:
+        return None
+    r = re.search(r"0x([0-9a-fA-F]{8,16})\s+_?SortList\b", m)
+    if not r:
+        return None
+    off = int(r.group(1), 16) - 0x06004000      # game.raw loads at SLSTART
+    if off < 0 or off + 4 > len(raw):
+        return None
+    return int.from_bytes(raw[off:off + 4], "big")
 
 
 def gate_headroom():
     m = "examples/coup/saturn/_build/game.map"
+    rawf = "examples/coup/saturn/_build/game.raw"
     if not os.path.exists(m):
         fail("F", "no linker map - build first")
         return
@@ -196,14 +241,26 @@ def gate_headroom():
     if not e:
         fail("F", "no _end symbol in map")
         return
-    head = 0x060FFC00 - int(e.group(1), 16)
-    if head <= KNOWN_HANG + SAFE_MARGIN:
-        fail("F", f"headroom {head:,} B is within {SAFE_MARGIN:,} of the "
-                  f"MEASURED hang point {KNOWN_HANG:,} - G8 reports GREEN on "
-                  "builds that do not boot, so this is not safe")
+    end = int(e.group(1), 16)
+
+    base = sgl_work_base(m, rawf)
+    if base is None:
+        base = SGL_WORK_FALLBACK
+        info("F", f"SortList unreadable; using the documented default "
+                  f"0x{base:08X}")
+
+    slack = base - end
+    if slack <= 0:
+        fail("F", f"_end 0x{end:08X} has REACHED SGL's work area at "
+                  f"0x{base:08X} - .bss is overwriting SortList / Zbuffer / "
+                  f"SpriteBuf, which are SGL's SCU DMA tables and sprite "
+                  f"buffers. Expect misrender or hang.")
+    elif slack < BSS_WARN_BYTES:
+        fail("F", f"only {slack:,} B between _end 0x{end:08X} and SGL's work "
+                  f"area 0x{base:08X}, under the {BSS_WARN_BYTES:,} B margin")
     else:
-        info("F", f"headroom {head:,} B, {head - KNOWN_HANG:,} above the "
-                  "measured hang point")
+        info("F", f"_end 0x{end:08X}, SGL work base 0x{base:08X}, "
+                  f"{slack:,} B of real slack")
 
 
 # -------------------------------------------------------- G: preprocessor
