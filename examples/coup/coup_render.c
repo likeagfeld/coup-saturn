@@ -2103,13 +2103,90 @@ static void coup_render_game_over(const coup_state_t* st)
         name_len = di;
     }
 
-    /* Center the winner text horizontally */
+#ifdef __SATURN__
+    /* ---- Winner, in the display face at double height ----
+     *
+     * The old line was body-font text centred by counting characters into a
+     * 40-column grid. On a screen whose whole job is to announce a winner it
+     * was the same size as a log entry. */
+    {
+        int prev = cui_saturn_font_get_active();
+        int tw, tx;
+
+        cui_saturn_font_set_active(COUP_FONT_DISPLAY);
+        tw = text_px_w(line);
+        tx = coup_centre_x(COUP_SCREEN_W, tw);
+        /* A plate behind it: the victory art is bright gold and gold text on
+         * gold is the same trap the title hint fell into. */
+        /* Directly under the VICTORY/DEFEAT banner, which is 128x32 at
+         * y=40 and therefore ends at 72. Reading order top to bottom is
+         * banner -> who won -> how it ended -> what to press. */
+        const int win_y = 80;
+
+        panel(tx - 8, win_y - 4, tw + 16, COUP_FONT_ROW_H * 2 + 8,
+              COUP_PANEL_DARK);
+        hline(tx - 8, win_y - 4, tw + 16, COUP_ACCENT_GOLD);
+        CUI_DISPLAY()->draw_text_sprite(tx, win_y, line, COUP_TEXT_GOLD);
+        cui_saturn_font_set_active(prev);
+    }
+
+    /* ---- Scrollable recap of how the match ended ----
+     *
+     * Reuses st->log and st->log_scroll, which the game screen already
+     * maintains and scrolls, so the recap needs no new data plumbing. The
+     * LAST entry is the winning action and is drawn in gold with a marker;
+     * everything above it is history and is dimmed. */
+    {
+        const int panel_x = 24, panel_w = COUP_SCREEN_W - 48;
+        const int panel_y = 112, row_h = 10;
+        const int max_rows = 5;
+        int total = st->log_count;
+        int shown = total < max_rows ? total : max_rows;
+        int scroll = st->log_scroll;
+        int i;
+
+        if (scroll > total - shown) {
+            scroll = total - shown;
+        }
+        if (scroll < 0) {
+            scroll = 0;
+        }
+
+        panel(panel_x, panel_y - 4, panel_w, row_h * max_rows + 16,
+              COUP_PANEL_DARK);
+        hline(panel_x, panel_y - 4, panel_w, COUP_ACCENT_GOLD);
+
+        for (i = 0; i < shown; i++) {
+            int idx = total - shown - scroll + i;
+            int y = panel_y + 6 + i * row_h;
+            int last = (idx == total - 1);
+
+            if (idx < 0 || idx >= COUP_LOG_LINES) {
+                continue;
+            }
+            if (last) {
+                /* The winning action. Marked and full-brightness. */
+                panel(panel_x + 2, y - 1, panel_w - 4, row_h,
+                      COUP_PANEL_SELECT);
+                CUI_DISPLAY()->draw_text_sprite(panel_x + 4, y, ">",
+                                                COUP_TEXT_GOLD);
+            }
+            CUI_DISPLAY()->draw_text_sprite(
+                panel_x + 14, y, st->log[idx],
+                last ? COUP_TEXT_GOLD : COUP_TEXT_GRAY);
+        }
+
+        if (total > max_rows) {
+            draw_centered(24, "[UP/DOWN] Recap    [A] Lobby",
+                          COUP_TEXT_WHITE);
+        } else {
+            draw_centered(24, "[A] Return to Lobby", COUP_TEXT_WHITE);
+        }
+    }
+#else
     text_x = (40 - name_len) / 2;
     if (text_x < 0) text_x = 0;
     draw_at(text_x, GO->winner_row, line, COUP_TEXT_GOLD);
-
-#ifndef __SATURN__
-    /* Non-Saturn: show instructions since there's no background image */
     draw_centered(GO->return_row, "[A] Return to Lobby", COUP_TEXT_WHITE);
 #endif
 }
