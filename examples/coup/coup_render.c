@@ -262,6 +262,96 @@ static void portrait_medallion(int x, int y, int w, int h)
     panel_lit(x + 2, y + 2, w - 4, h - 4, COUP_PORTRAIT_BG, COUP_GRD_PANEL);
 }
 
+/*============================================================================
+ * Action effects
+ *
+ * Triggered by OBSERVING state transitions from the render layer. Nothing in
+ * coup_game.c or the protocol is touched, so the server contract in spec
+ * section 8 is unaffected - this is read-only.
+ *============================================================================*/
+
+#define COUP_FX_HOLD_FRAMES 3        /* frames each effect frame is held */
+
+static int s_fx_active = -1;         /* COUP_FX_* currently playing, or -1 */
+static int s_fx_tick = 0;
+static int s_fx_x, s_fx_y;
+
+/** Map a declared action to the effect that dramatises it. */
+static int fx_for_action(int action)
+{
+    switch (action) {
+    case COUP_ACT_COUP:         return COUP_FX_COUP;
+    case COUP_ACT_ASSASSINATE:  return COUP_FX_ASSASSINATE;
+    case COUP_ACT_STEAL:        return COUP_FX_STEAL;
+    case COUP_ACT_EXCHANGE:     return COUP_FX_EXCHANGE;
+    case COUP_ACT_TAX:
+    case COUP_ACT_INCOME:
+    case COUP_ACT_FOREIGN_AID:  return COUP_FX_TAX;
+    default:                    return -1;
+    }
+}
+
+/** Begin an effect centred on the table. */
+static void fx_start(int fx)
+{
+    if (fx < 0 || !coup_fx_loaded()) {
+        return;
+    }
+    s_fx_active = fx;
+    s_fx_tick = 0;
+    s_fx_x = (COUP_SCREEN_W - 64) / 2;
+    s_fx_y = 84;
+}
+
+/** Watch for the transitions worth dramatising. */
+static void fx_observe(const coup_state_t* st)
+{
+    static int prev_action = -1;
+    static int prev_phase = -1;
+    static int prev_blocker = -1;
+
+    int action = (int)st->declared_action;
+    int phase = (int)st->phase;
+
+    if (st->declared_actor >= 0 && action != prev_action && action >= 0) {
+        fx_start(fx_for_action(action));
+    }
+    if (phase != prev_phase && phase == COUP_PHASE_CHALLENGE_WAIT) {
+        fx_start(COUP_FX_CHALLENGE);
+    }
+    if (st->blocker_id >= 0 && st->blocker_id != prev_blocker) {
+        fx_start(COUP_FX_BLOCK);
+    }
+
+    prev_action = action;
+    prev_phase = phase;
+    prev_blocker = st->blocker_id;
+}
+
+/** Draw and advance the running effect, if any. */
+static void fx_render(void)
+{
+    int frames, frame;
+
+    if (s_fx_active < 0) {
+        return;
+    }
+    frames = coup_fx_frames(s_fx_active);
+    if (frames <= 0) {
+        s_fx_active = -1;
+        return;
+    }
+
+    frame = s_fx_tick / COUP_FX_HOLD_FRAMES;
+    if (frame >= frames) {
+        s_fx_active = -1;           /* sequence complete */
+        return;
+    }
+
+    coup_fx_draw(s_fx_active, frame, s_fx_x, s_fx_y);
+    s_fx_tick++;
+}
+
 /** Draw a row of background tiles across the screen width.
  *  10 tiles at 32px each = 320px. Uses 10 VDP1 commands. */
 static void draw_bg_row(int y)
@@ -1763,6 +1853,12 @@ static void coup_render_game(const coup_state_t* st)
         break;
     }
 
+    /* === 3b. Action effect over the table === */
+#ifdef __SATURN__
+    fx_observe(st);
+    fx_render();
+#endif
+
     /* === 4. Your hand (center-bottom, outlined panel) === */
     render_your_hand(st);
 
@@ -1798,6 +1894,17 @@ static void coup_render_game_over(const coup_state_t* st)
 #else
     panel_r(GO->bg, COUP_BG_DARK);
     draw_at(GO->gameover_col, GO->gameover_row, "     GAME  OVER", COUP_TEXT_RED);
+#endif
+
+#ifdef __SATURN__
+    /* VICTORY or DEFEAT banner from the official art, centred above the text.
+     * The banner is 128x32; centring is computed, not hard-coded. */
+    if (coup_fx_loaded()) {
+        const coup_player_t* me = find_self(st);
+        int won = (me && me->id == st->winner_id);
+        coup_ui_draw(won ? COUP_UI_VICTORY : COUP_UI_DEFEAT,
+                     (COUP_SCREEN_W - 128) / 2, 40);
+    }
 #endif
 
     /* Build "WINNER_NAME WINS!" string */
