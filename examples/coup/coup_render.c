@@ -1968,14 +1968,10 @@ static void coup_render_game_over(const coup_state_t* st)
     winner_name = st->winner_name[0] ? st->winner_name : "Unknown";
 
 #ifdef __SATURN__
-    /* Full-screen game over background image */
-    if (coup_gameover_loaded()) {
-        coup_gameover_draw();
-    } else {
-        /* No game-over image: fall through to the VDP2 backdrop rather than
-         * covering it with a flat rect. */
-        screen_bg(GO->bg, COUP_BG_DARK);
-    }
+    /* No fill at all. The backdrop for this screen is the streamed VICTORY or
+     * DEFEAT scene, chosen in the scene switch by the same win test the
+     * banner below uses. Anything drawn here would cover it. */
+    (void)GO;
 #else
     panel_r(GO->bg, COUP_BG_DARK);
     draw_centered(GO->gameover_row, "GAME OVER", COUP_TEXT_RED);
@@ -2066,11 +2062,33 @@ void coup_render_screen(const coup_state_t* st)
             {
                 int scene;
                 switch (st->screen) {
-                case COUP_SCREEN_GAME:  scene = COUP_BG_SCENE_GAME;  break;
-                case COUP_SCREEN_RULES: scene = COUP_BG_SCENE_RULES; break;
-                /* Game over keeps its own full-screen image, so it needs no
-                 * dedicated backdrop; everything else uses the title art. */
-                default:                scene = COUP_BG_SCENE_TITLE; break;
+                case COUP_SCREEN_GAME:
+                    scene = COUP_BG_SCENE_GAME;
+                    break;
+                case COUP_SCREEN_RULES:
+                    scene = COUP_BG_SCENE_RULES;
+                    break;
+                case COUP_SCREEN_LOBBY:
+                    scene = COUP_BG_SCENE_LOBBY;
+                    break;
+                case COUP_SCREEN_CONNECTING:
+                    scene = COUP_BG_SCENE_CONNECTING;
+                    break;
+                case COUP_SCREEN_GAME_OVER: {
+                    /* The outcome decides the backdrop. Same test the VICTORY
+                     * / DEFEAT banner uses, so art and backdrop can never
+                     * disagree about who won. */
+                    const coup_player_t* me = find_self(st);
+                    scene = (me && me->id == st->winner_id)
+                            ? COUP_BG_SCENE_VICTORY
+                            : COUP_BG_SCENE_DEFEAT;
+                    break;
+                }
+                /* Title, settings and name entry share the title art
+                 * deliberately - they are one continuous front-end. */
+                default:
+                    scene = COUP_BG_SCENE_TITLE;
+                    break;
                 }
                 saturn_bg_set_scene(scene);
             }

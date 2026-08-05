@@ -18,7 +18,6 @@
 #include "saturn_vdp1.h"
 
 /* Include gameover data for VRAM offset calculation */
-#include "coup_gameover_data.h"    /* GAMEOVER_STRIP_COUNT for the CRAM bank base */
 #include "coup_gameover_loader.h"  /* coup_gameover_vram_end() */
 
 /*============================================================================

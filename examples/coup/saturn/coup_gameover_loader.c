@@ -1,98 +1,56 @@
 /**
- * coup_gameover_loader.c - Game Over Background Image Loader
+ * coup_gameover_loader.c - RETIRED. Kept only to hold the allocation chain.
  *
- * Uploads the game over screen background image to VDP1 VRAM as
- * 7 horizontal strips (320x32 each), each with its own 15-color
- * palette. This approach gives far better color quality than a
- * single 15-color palette for the entire detailed image.
+ * This used to upload a full-screen game-over image to VDP1 as seven 320x32
+ * strips, each with its own 15-colour palette, because one 15-colour palette
+ * could not carry a detailed full-screen picture.
  *
- * VDP1 VRAM: Strips are placed after existing sprite data.
- * CRAM: Strip palettes use banks 25-31 (after sprite banks 16-24).
+ * It is gone for two reasons:
+ *
+ *   1. The screen now has real backdrops. VICTORY and DEFEAT are separate
+ *      256-colour scenes streamed from the disc and chosen by the same test
+ *      the VICTORY/DEFEAT banner uses, so the outcome cannot disagree with
+ *      the art. A 15-colours-per-strip VDP1 sprite drawn on top would cover
+ *      that with a markedly worse image.
+ *   2. It was the last piece of original artwork still shipping where
+ *      official art exists.
+ *
+ * Retiring it hands back 71,680 bytes of VDP1 texture VRAM, roughly 227 KB of
+ * generated source, and seven CRAM banks.
+ *
+ * WHY THE MODULE REMAINS
+ *   The loaders form a chain: each asks the previous one where its VRAM and
+ *   CRAM allocation ended, so nothing has to recompute a base address. Two
+ *   separate corruption bugs came from recomputing those bases by hand. This
+ *   file keeps that link intact by passing the sprite loader's end straight
+ *   through. Deleting it outright would make coup_anim_loader.c chain from
+ *   nothing.
  */
 
 #include "coup_gameover_loader.h"
-#include "coup_gameover_data.h"
-#include "coup_sprites.h"
 #include "coup_sprite_loader.h"
-#include "saturn_vdp1.h"
 
-/*============================================================================
- * CRAM Bank Assignment
- *============================================================================*/
-
-/* Game over strip palettes start after sprite palettes.
- * Sprites use banks 16-24 (9 banks for COUP_SPR_COUNT sprites).
- * Gameover strips use banks 25-31 (7 banks). */
-/* Chained from the sprite loader at load time, not recomputed. */
-static int s_cram_base = 0;
-#define GAMEOVER_CRAM_BASE_BANK  s_cram_base
-
-/*============================================================================
- * State
- *============================================================================*/
-
-/* VDP1 VRAM offsets for each strip's texture data */
-static uint32_t s_strip_tex_offsets[GAMEOVER_STRIP_COUNT];
 static uint32_t s_vram_end = 0;
-static bool s_loaded = false;
-
-/*============================================================================
- * Public API
- *============================================================================*/
+static int s_cram_base = 0;
 
 void coup_gameover_load(void)
 {
-    int i;
-    /* Chain directly from where the sprite loader stopped. */
-    uint32_t vram_cursor = (coup_sprites_vram_end() + 7) & ~7;
-
+    /* Consume nothing; simply forward the sprite loader's endpoints so the
+     * next loader in the chain allocates from the right place. */
+    s_vram_end = (coup_sprites_vram_end() + 7) & ~(uint32_t)7;
     s_cram_base = coup_sprites_cram_end_bank();
-
-    for (i = 0; i < GAMEOVER_STRIP_COUNT; i++) {
-        uint16_t data_size = gameover_strip_sizes[i];
-
-        /* Record absolute VDP1 VRAM offset */
-        s_strip_tex_offsets[i] = SATURN_VDP1_TEX_OFFSET + vram_cursor;
-
-        /* Copy strip pixel data to VDP1 VRAM */
-        saturn_vdp1_upload_texture(vram_cursor, gameover_strip_data[i], data_size);
-
-        /* Upload strip palette to CRAM */
-        saturn_vdp1_upload_palette(GAMEOVER_CRAM_BASE_BANK + i,
-                                   gameover_strip_palettes[i]);
-
-        /* Advance cursor (8-byte aligned) */
-        vram_cursor += (data_size + 7) & ~7;
-    }
-
-    s_vram_end = vram_cursor;
-    s_loaded = true;
 }
 
 bool coup_gameover_draw(void)
 {
-    int i;
-
-    if (!s_loaded) return false;
-
-    for (i = 0; i < GAMEOVER_STRIP_COUNT; i++) {
-        int y = i * GAMEOVER_STRIP_H;
-
-        if (!saturn_vdp1_draw_sprite(
-                0, y,
-                GAMEOVER_STRIP_W, GAMEOVER_STRIP_H,
-                s_strip_tex_offsets[i],
-                GAMEOVER_CRAM_BASE_BANK + i)) {
-            return false;  /* VDP1 budget exceeded */
-        }
-    }
-
-    return true;
+    /* Nothing to draw. The caller falls through to the VDP2 backdrop, which
+     * is where the game-over art now lives. */
+    return false;
 }
 
 bool coup_gameover_loaded(void)
 {
-    return s_loaded;
+    return false;
 }
 
 uint32_t coup_gameover_vram_end(void)
@@ -102,5 +60,5 @@ uint32_t coup_gameover_vram_end(void)
 
 int coup_gameover_cram_end_bank(void)
 {
-    return s_cram_base + GAMEOVER_STRIP_COUNT;
+    return s_cram_base;   /* claims no banks of its own */
 }
