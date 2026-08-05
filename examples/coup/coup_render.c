@@ -15,6 +15,9 @@
 #include "coup.h"
 #include "coup_ui.h"
 #include "coup_shading.h"
+#ifdef __SATURN__
+#include "saturn_linescroll.h"
+#endif
 #include "cui_pal.h"
 
 #include <stdio.h>
@@ -2302,6 +2305,8 @@ void coup_render_screen(const coup_state_t* st)
          * touches VDP1 VRAM. */
         coup_render_init_shading();
         coup_render_update_shading(st->frame_count);
+        /* Safe no-op when not armed, so it needs no guard. */
+        saturn_linescroll_advance();
 
         if ((int)st->screen != s_last_screen) {
             s_last_screen = (int)st->screen;
@@ -2341,6 +2346,22 @@ void coup_render_screen(const coup_state_t* st)
                     break;
                 }
                 saturn_bg_set_scene(scene);
+
+                /* The sine shimmer belongs to the front-end only. The design
+                 * doc asks for it on the title and nowhere else - a moving
+                 * backdrop under the game table would fight the cards, and
+                 * under the rules text it would make reading harder.
+                 *
+                 * Line scroll is legal on this layer even though NBG1 is a
+                 * BITMAP here: ST-058-R2 section 5.3 - "both functions can be
+                 * used without relationship to the cell format and bit map
+                 * format" - and NBG1 is one of only two layers that support
+                 * line scroll at all. */
+                if (scene == COUP_BG_SCENE_TITLE) {
+                    saturn_linescroll_arm();
+                } else {
+                    saturn_linescroll_disarm();
+                }
 
                 /* The streamed read takes the CD pickup and stops CD-DA -
                  * there is only one pickup and CDC_CdPlay against the file's
