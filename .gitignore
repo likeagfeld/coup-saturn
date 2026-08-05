@@ -82,3 +82,6 @@ __pycache__/
 
 # Dependency files from -MMD
 *.d
+
+# Delivered asset packs: keep the extracted PNGs, not the archives
+*.zip

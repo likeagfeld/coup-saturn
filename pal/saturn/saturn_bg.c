@@ -42,11 +42,23 @@ static void saturn_bg_upload(int scene)
     volatile uint8_t* vram = (volatile uint8_t*)SATURN_BG_VRAM;
     const uint8_t* src = coup_bg_tables[scene];
     const uint16_t* pal = coup_bg_palettes[scene];
-    uint32_t i;
+    uint32_t i, y, x;
 
-    for (i = 0; i < COUP_BG_SIZE; i++) {
-        vram[i] = src[i];
+    /* Scenes are stored as the visible window only (320x224), not the full
+     * 512x256 plane, because 45% of that plane is never displayed. Expand row
+     * by row into the 512-wide VRAM bitmap.
+     *
+     * The same number of bytes reaches VRAM either way, so this costs nothing
+     * at upload time; the saving is 59,392 bytes of WRAM per scene, which is
+     * what lets more than two backgrounds be resident. */
+    for (y = 0; y < COUP_BG_VISIBLE_H; y++) {
+        volatile uint8_t* dst = vram + (uint32_t)y * COUP_BG_W;
+        const uint8_t* row = src + (uint32_t)y * COUP_BG_VISIBLE_W;
+        for (x = 0; x < COUP_BG_VISIBLE_W; x++) {
+            dst[x] = row[x];
+        }
     }
+    (void)i;
 
     /* CRAM permits word and long-word access only; byte access is not allowed
      * (ST-58-R2, VDP2 manual: "Access in bytes is not allowed"). These are

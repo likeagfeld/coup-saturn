@@ -54,21 +54,27 @@ def convert(src_path):
         r, g, b = src_palette[i * 3: i * 3 + 3]
         palette[i + RESERVED_INDICES] = to_rgb555(r, g, b)
 
-    bitmap = bytearray(BITMAP_W * BITMAP_H)   # zero-filled = transparent
+    # Store ONLY the visible window, not the full 512x256 bitmap.
+    #
+    # VDP2 requires a 512-pixel-wide bitmap because that is the hardware size
+    # selector, but 320x224 of it is ever displayed. Storing the full plane
+    # would carry 59,392 bytes of off-screen padding per scene - 45% waste.
+    # saturn_bg_upload expands these rows into the 512-wide VRAM plane, so the
+    # saving is in WRAM only and costs nothing in quality or upload time.
+    bitmap = bytearray(VISIBLE_W * VISIBLE_H)
     for y in range(VISIBLE_H):
-        row = y * BITMAP_W
-        src_row = y * VISIBLE_W
+        row = y * VISIBLE_W
         for x in range(VISIBLE_W):
-            bitmap[row + x] = indices[src_row + x] + RESERVED_INDICES
+            bitmap[row + x] = indices[row + x] + RESERVED_INDICES
 
     return bytes(bitmap), palette, quant.convert("RGB")
 
 
 def verify(bitmap, palette):
     """Assert every hardware invariant before emitting anything."""
-    assert len(bitmap) == BITMAP_W * BITMAP_H, (
-        f"bitmap must be exactly {BITMAP_W * BITMAP_H} bytes (one VDP2 bank), "
-        f"got {len(bitmap)}")
+    assert len(bitmap) == VISIBLE_W * VISIBLE_H, (
+        f"stored bitmap must be exactly {VISIBLE_W * VISIBLE_H} bytes (the "
+        f"visible window only), got {len(bitmap)}")
 
     assert palette[0] == 0x0000, (
         "palette index 0 must stay reserved: VDP2 treats colour 0 in a scroll "
@@ -78,13 +84,12 @@ def verify(bitmap, palette):
     assert not bad, f"RGB555 bit 15 must be clear, found {len(bad)} entries above 0x7FFF"
 
     for y in range(VISIBLE_H):
-        row = bitmap[y * BITMAP_W: y * BITMAP_W + VISIBLE_W]
+        row = bitmap[y * VISIBLE_W: (y + 1) * VISIBLE_W]
         assert 0 not in row, (
             f"visible row {y} uses the transparent index - the background "
             "would show holes")
 
-    used = set(bitmap[y * BITMAP_W: y * BITMAP_W + VISIBLE_W][x]
-               for y in range(VISIBLE_H) for x in range(VISIBLE_W))
+    used = set(bitmap)
     assert max(used) <= 255, "index out of range"
     return {"colours_used": len(used)}
 
@@ -103,7 +108,10 @@ def emit_header(scenes, out_path):
         f.write(f"#define COUP_BG_H {BITMAP_H}\n")
         f.write(f"#define COUP_BG_VISIBLE_W {VISIBLE_W}\n")
         f.write(f"#define COUP_BG_VISIBLE_H {VISIBLE_H}\n")
-        f.write(f"#define COUP_BG_SIZE {BITMAP_W * BITMAP_H}\n")
+        f.write(f"#define COUP_BG_SIZE {VISIBLE_W * VISIBLE_H}\n")
+        f.write("/* Stored as the visible window only. saturn_bg_upload expands\n"
+                "   each row into the 512-wide VDP2 plane, so this is 45% smaller\n"
+                "   in WRAM than the full bitmap at no cost in quality. */\n")
         f.write(f"#define COUP_BG_SCENE_COUNT {len(scenes)}\n\n")
 
         f.write("enum {\n")
@@ -167,7 +175,7 @@ def main():
 
     emit_header(scenes, args.output)
 
-    total = len(scenes) * BITMAP_W * BITMAP_H
+    total = len(scenes) * VISIBLE_W * VISIBLE_H
     print(f"-> {args.output}")
     print(f"   {len(scenes)} scene(s), {BITMAP_W}x{BITMAP_H} 8bpp, "
           f"{total:,} bytes of bitmap data")

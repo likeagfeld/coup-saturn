@@ -1817,14 +1817,19 @@ void coup_render_screen(const coup_state_t* st)
         if ((int)st->screen != s_last_screen) {
             s_last_screen = (int)st->screen;
 
-            /* Pick the backdrop for this screen. The council chamber - a round
-             * table ringed with thrones - belongs to the game itself; every
-             * other screen gets the city skyline. saturn_bg_set_scene skips
-             * the 128 KB copy when the scene is already resident, so this is
-             * free on same-scene transitions. */
-            saturn_bg_set_scene(st->screen == COUP_SCREEN_GAME
-                                ? COUP_BG_SCENE_GAME
-                                : COUP_BG_SCENE_TITLE);
+            /* Pick the backdrop for this screen. saturn_bg_set_scene skips the
+             * VRAM copy when the requested scene is already resident, so this
+             * is free on same-scene transitions. */
+            {
+                int scene;
+                switch (st->screen) {
+                case COUP_SCREEN_GAME:      scene = COUP_BG_SCENE_GAME;    break;
+                case COUP_SCREEN_LOBBY:     scene = COUP_BG_SCENE_LOBBY;   break;
+                case COUP_SCREEN_GAME_OVER: scene = COUP_BG_SCENE_VICTORY; break;
+                default:                    scene = COUP_BG_SCENE_TITLE;   break;
+                }
+                saturn_bg_set_scene(scene);
+            }
 
             saturn_fade_start(SATURN_FADE_BLACK, SATURN_FADE_NONE, 12, false);
         }
