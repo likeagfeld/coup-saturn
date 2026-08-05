@@ -240,9 +240,32 @@ def gate_centring():
         info("H", "button labels measured from real font metrics")
 
 
+# ------------------------------------------------- I: implicit declarations
+def gate_implicit_decls():
+    """An implicitly declared function is undefined behaviour that compiles.
+
+    MEASURED: coup_render.c called saturn_bg_set_scene() for the whole life of
+    the background layer without ever including saturn_bg.h. C89 let it
+    through as an implicit int-returning function and it happened to work on
+    this ABI. It would have broken silently the moment the signature changed.
+    """
+    log = "build/qa/build.log"
+    if not os.path.exists(log):
+        info("I", "no build log captured; implicit-declaration check skipped")
+        return
+    bad = [l.strip() for l in open(log, encoding="utf-8", errors="replace")
+           if "implicit declaration" in l]
+    if bad:
+        for b in bad[:5]:
+            fail("I", b)
+    else:
+        info("I", "no implicitly declared functions")
+
+
 def main():
     for g in (gate_assets, gate_transparency, gate_animation, gate_vdp1,
-              gate_cram, gate_headroom, gate_preprocessor, gate_centring):
+              gate_cram, gate_headroom, gate_preprocessor, gate_centring,
+              gate_implicit_decls):
         try:
             g()
         except Exception as exc:                       # noqa: BLE001

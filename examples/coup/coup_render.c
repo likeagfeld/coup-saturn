@@ -29,6 +29,7 @@
 #include "coup_fx_data.h"
 #include "saturn_pal.h"          /* cui_saturn_font_set_active */
 #include "saturn_font.h"         /* saturn_font_registry_t, advance_x */
+#include "saturn_bg.h"
 #include "saturn_fade.h"
 #include "saturn_vdp1.h"
 #include "saturn_vdp2.h"
@@ -433,16 +434,6 @@ static void fx_render(void)
 }
 #endif
 
-/** Draw a row of background tiles across the screen width.
- *  10 tiles at 32px each = 320px. Uses 10 VDP1 commands. */
-static void draw_bg_row(int y)
-{
-    int x;
-    if (!coup_sprites_loaded()) return;
-    for (x = 0; x < 320; x += 32) {
-        coup_sprites_draw(COUP_SPR_BG_TILE, x, y);
-    }
-}
 #endif
 
 /*============================================================================
@@ -669,16 +660,6 @@ static void coup_render_rules(const coup_state_t* st)
     /* The official rules table IS the backdrop on Saturn (COUP_BG_SCENE_RULES),
      * so the decorative tiles and per-page portrait would only obscure it.
      * Keep the page indicator and hints, which the art does not provide. */
-#if 0
-    draw_bg_row(L->bg_tile_y);
-    if (pg > 0 && coup_sprites_loaded()) {
-        static const int page_portrait[COUP_RULES_PAGES - 1] = {
-            COUP_SPR_AMBASSADOR, COUP_SPR_CAPTAIN, COUP_SPR_DUKE,
-            COUP_SPR_ASSASSIN, COUP_SPR_CONTESSA
-        };
-        coup_sprites_draw(page_portrait[pg - 1], L->portrait_pos.x, L->portrait_pos.y);
-    }
-#endif
 #endif
 
     /* Header bar */
@@ -831,8 +812,6 @@ static void coup_render_connecting(const coup_state_t* st)
     screen_bg(L->bg, COUP_BG_DARK);
 
 #ifdef __SATURN__
-    /* Decorative background tiles */
-    draw_bg_row(L->bg_tile_y);
 #endif
 
     /* Connection panel */
@@ -950,9 +929,13 @@ static void coup_render_name_entry(const coup_state_t* st)
     screen_bg(L->bg, COUP_BG_DARK);
 
 #ifdef __SATURN__
-    /* Decorative background tiles and card_back sprite */
-    draw_bg_row(L->bg_tile_y);
-    if (coup_sprites_loaded()) {
+    /* The official card back. The legacy tile row that used to run behind it
+     * was decorative filler designed for a flat dark screen; over painted
+     * backdrop art it is clutter, so it is gone from every screen that now
+     * has a real scene. */
+    if (coup_fx_loaded()) {
+        coup_ui_draw(COUP_UI_CARD_BACK, L->sprite_pos.x, L->sprite_pos.y);
+    } else if (coup_sprites_loaded()) {
         coup_sprites_draw(COUP_SPR_CARD_BACK, L->sprite_pos.x, L->sprite_pos.y);
     }
 #endif
@@ -1048,9 +1031,8 @@ static void coup_render_lobby(const coup_state_t* st)
     /* Dark background */
     screen_bg(L->bg, COUP_BG_DARK);
 
-#ifdef __SATURN__
-    draw_bg_row(L->bg_tile_y);
-#endif
+    /* No decorative tile row: the lobby has its own painted backdrop now, and
+     * the tiles were filler for a flat dark screen. */
 
     /* Header bar */
     panel_r(L->header_bar, COUP_PANEL_HEADER);

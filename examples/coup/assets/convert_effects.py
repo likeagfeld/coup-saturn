@@ -89,6 +89,19 @@ def dark_border_mask(im, thresh=LOGO_DARK_MAX):
     return [not k for k in keyed]
 
 
+def all_opaque(im):
+    """Keep every pixel. For art that must NOT be keyed.
+
+    A card face is a complete picture with its own border - there is no
+    background to remove, and keying one would punch holes in the artwork.
+    Index 0 still goes unused, because quantize_sequence shifts every colour
+    up by one, so the sprite is fully opaque on VDP1 where index 0 is the
+    transparent slot.
+    """
+    w, h = im.size
+    return [True] * (w * h)
+
+
 def quantize_sequence(frames, name, mask_fn=None):
     """Shared palette across a sequence; the keyed colour becomes index 0.
 
@@ -152,7 +165,7 @@ def pack_4bpp(indices, w, h):
     return bytes(data)
 
 
-def verify(per_frame, palette, w, h, name):
+def verify(per_frame, palette, w, h, name, require_key=True):
     assert w % 8 == 0, f"{name}: width {w} is not a multiple of 8"
     assert palette[0] == 0x0000, f"{name}: index 0 must be the transparency key"
     bad = [p for p in palette if p > 0x7FFF]
@@ -164,7 +177,12 @@ def verify(per_frame, palette, w, h, name):
     # rectangle over the table.
     keyed = sum(p.count(0) for p in per_frame)
     total = sum(len(p) for p in per_frame)
-    assert keyed > 0, f"{name}: nothing is transparent - the key was not applied"
+    if require_key:
+        assert keyed > 0, (f"{name}: nothing is transparent - the key was not "
+                           "applied")
+    else:
+        assert keyed == 0, (f"{name}: {keyed} pixel(s) landed on the "
+                            "transparent index in art that must be opaque")
     return keyed / total
 
 
@@ -288,6 +306,19 @@ def main():
         total += len(blobs[0])
         print(f"  ui {'wordmark':12}  1 frame  {w:3}x{h:<3} "
               f"{keyed*100:4.1f}% keyed  {len(blobs[0]):>6,} B  (dark key)")
+
+    # Card faces and the card back. Opaque, not keyed: each is a complete
+    # picture with its own border, so there is no background to remove.
+    for p in sorted(glob.glob(os.path.join(args.pack_dir, "cards", "*.png"))):
+        name = os.path.splitext(os.path.basename(p))[0].split("_", 1)[1]
+        im = Image.open(p).convert("RGB")
+        idx, pal, w, h = quantize_sequence([im], name, mask_fn=all_opaque)
+        keyed = verify(idx, pal, w, h, name, require_key=False)
+        blobs = [pack_4bpp(idx[0], w, h)]
+        singles.append((name, blobs, pal, w, h))
+        total += len(blobs[0])
+        print(f"  ui {name:12}  1 frame  {w:3}x{h:<3} "
+              f"{keyed*100:4.1f}% keyed  {len(blobs[0]):>6,} B  (opaque card)")
 
     path = emit(sequences, singles, args.out)
     print(f"-> {path}")
