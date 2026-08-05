@@ -135,6 +135,9 @@ COUP_TEST_SRCS := $(wildcard $(COUP_TEST_DIR)/*.c) \
                   $(COUP_SRC_DIR)/coup_render.c \
                   $(COUP_SRC_DIR)/coup_shading.c \
                   pal/saturn/saturn_bg.c \
+                  pal/saturn/saturn_distort.c \
+                  pal/saturn/saturn_linescroll.c \
+                  pal/saturn/saturn_coinfx.c \
                   pal/saturn/saturn_fade.c \
                   pal/saturn/saturn_vdp1.c \
                   pal/saturn/saturn_font.c \
