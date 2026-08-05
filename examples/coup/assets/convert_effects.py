@@ -382,9 +382,19 @@ def main():
     #
     # Its ink box is 1862x477, aspect 3.90, which at 256 wide is 65 tall - it
     # fits the 256x64 slot almost exactly with no distortion worth the name.
-    logo = "Official Art/couptitlelogo.png"
+    # The exact on-disk case is CouptitleLogo.png. It used to be spelled
+    # couptitlelogo.png here, which resolves on NTFS and does NOT resolve on a
+    # case-sensitive filesystem - and the Saturn build runs in a Linux
+    # container. There the lookup would miss and the fallback below would take
+    # over WITHOUT SAYING SO, shipping the cropped wordmark whose baselines
+    # this path exists to avoid. Same failure class as every self-agreeing
+    # gate in this project: the quiet wrong answer beats the loud one.
+    logo = "Official Art/CouptitleLogo.png"
     logo_mask = None
     if not os.path.exists(logo):
+        print(f"  WARNING: {logo} not found - falling back to the pack's "
+              f"CROPPED L1_wordmark.png. Check the filename's case; this "
+              f"path resolves on NTFS but not on a case-sensitive filesystem.")
         logo = os.path.join(args.pack_dir, "logo", "L1_wordmark.png")
         logo_mask = dark_border_mask
     if os.path.exists(logo):

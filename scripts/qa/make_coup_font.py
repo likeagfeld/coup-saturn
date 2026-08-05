@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
-"""Build the COUP 8x8 font from the supplied fontfile.png sheet.
+"""SUPERSEDED - do not run this expecting to reproduce the shipping font.
+
+!! This script does NOT generate pal/saturn/fonts/saturn_font_coup_8x8.c as
+!! it currently stands. That file was extracted from ab8a59e0-*.png, a NATIVE
+!! 8x8 grid, at quantum Q=11 with per-glyph bbox detection - a better source
+!! than this one, because it needs no downscale at all. This script reads
+!! fontfile.png, a large rendered sheet that must be reduced, and writes to
+!! the SAME output path.
+!!
+!! MEASURED: both produce 760 bytes and 653 of them differ (85.9%). Running
+!! this would silently overwrite the shipping font with the earlier, worse
+!! extraction, and the only symptom would be that the text looked wrong
+!! again. The generator that produced the shipping font is not in the repo.
+!!
+!! It is kept because its glyph-location and erosion logic is the record of
+!! what was learned about reducing this typeface - see FILL_MAX below, where
+!! the thinning bound is documented against the legibility failures it was
+!! measured from. Read it; do not run it.
+
+Build the COUP 8x8 font from the supplied fontfile.png sheet.
 
 The sheet is a rendered character set in the logo's style. Glyphs are located
 by projection, merged where a letter's parts are disjoint (K's stem is 5 px
@@ -9,6 +28,20 @@ bottom-aligned on a per-row baseline so they sit on a common line.
 """
 import numpy as np
 from PIL import Image
+
+import sys as _sys
+
+_FORCE = "--i-know-this-overwrites-the-shipping-font"
+if _FORCE not in _sys.argv:
+    raise SystemExit(
+        "make_coup_font.py: REFUSING to run.\n"
+        "  This writes pal/saturn/fonts/saturn_font_coup_8x8.c, but the\n"
+        "  shipping font came from a DIFFERENT and better source\n"
+        "  (ab8a59e0-*.png, a native 8x8 grid needing no downscale).\n"
+        "  MEASURED: 653 of its 760 bytes differ from what this produces.\n"
+        "  Running it silently regresses the font, and the only symptom\n"
+        "  would be that the text looked wrong again.\n"
+        "  Pass " + _FORCE + " if that is genuinely what you want.")
 
 
 def erode(m, n):
