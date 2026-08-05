@@ -16,7 +16,7 @@ Branch `claude/saturn-visual-facelift`.
 | D3 | Use RetroArch, not Mednafen, for live memory and snapshots | **DONE** — live memory + per-screen capture, §7 |
 | D4 | Replace ALL original artwork with the official/generated art | **DONE** — last original asset retired |
 | D5 | Animations and effects for every action | done, unit-tested |
-| D6 | Studio-grade visual quality; nothing pixelated or over-reduced | measured: 36–38 dB backgrounds |
+| D6 | Studio-grade visual quality; nothing pixelated or over-reduced | **DONE** — 8 scenes 33.9–38.4 dB; backdrops visible through the UI |
 | D7 | Assets cleanly placed; text centred on buttons | **DONE** — ratcheted by `qa_centring.py --strict` |
 | D8 | Complete the whole game end to end, every screen | **DONE** — all 8 screens captured on hardware |
 | D9 | Server must stay turnkey — no protocol or rules changes | held; §8 unbroken |
@@ -27,17 +27,15 @@ Branch `claude/saturn-visual-facelift`.
 ## 2. Measured state (facts, not claims)
 
 ```
-host tests            290 / 290 green
+host tests            291 / 291 green
 verify_facelift       11 / 11 gates green
-fidelity              8 scenes, 33.9-38.4 dB, 254-255/255 palette,
-                      detail 103-107%
-                      portraits 29.9-34.8 dB, 13-14/15 palette, detail 97-104%
-wordmark on screen    correlation peak 0.400 at offset (0,0), control 0.097
+QA gates              fidelity, portraits, centring, legibility, wordmark,
+                      CD budget - all green
+fidelity              8 scenes 33.9-38.4 dB, 254-255/255 palette
+legibility            every screen 90-135 contrast (threshold 60)
+wordmark on screen    correlation 0.400 at offset (0,0), control 0.097
 streamed scene load   72,192 B in 21 vblanks = 0.35 s   (budget 1.00 s)
-WRAM-H headroom       312,220 B, 130,908 above the measured hang point
-backgrounds           8 of 8, streamed from disc at full 8bpp
-sprites               7 effect sequences, 19 UI sprites (incl. 6 card faces)
-labels                0 padding-centred; ratchet green
+backgrounds           8 of 8, streamed, full 8bpp, VISIBLE through the UI
 screens captured      8 of 8 on real hardware output
 server contract       0 files changed in server / rules / protocol
 ```
@@ -373,14 +371,77 @@ Recorded because each was invisible to reading the code:
 
 ### What is deliberately NOT done
 
-- **Translucent UI panels.** On rules, game and lobby the painted backdrop is
-  largely hidden behind opaque panels; settings shows what the art looks like
-  when it is not. VDP2 sprite colour calculation could blend them, and the
-  discrimination is available for free - panels use RGB-code colour (MSB set)
-  while text uses palette codes, so a `CC_MSB` condition would blend plates and
-  leave glyphs opaque. It is not attempted here because it is a new rendering
-  feature rather than a plan item, and a wrong colour-calculation setup makes
-  text unreadable rather than merely ugly. Whoever picks it up has the tool for
-  it: `capture_all_screens.sh` photographs every screen in one run.
+- ~~Translucent UI panels~~ **DELIVERED** - see section 13.
 - **Lobby seat rows and rules body text remain literally positioned.** They are
   left-aligned lists. Centring them would be a defect.
+
+
+---
+
+## 13. Blended UI plates
+
+The painted backdrops were being buried. On rules, game and lobby the panels
+covered nearly the whole scene, so the art was invisible on exactly the
+screens players look at longest. Settings, whose panels are small, showed what
+was being lost.
+
+### The discrimination was already there
+
+`saturn_vdp1.c` writes polygon colours as an RGB code with **bit 15 set**
+(line 62, `rgb555 | 0x8000`) and textured sprites as a CRAM bank with **bit 15
+clear** (lines 180, 223). The MSB has been separating "UI plate" from "glyph,
+portrait, effect and card" all along. Selecting `CC_MSB` as the
+colour-calculation condition therefore blends exactly the plates and leaves
+every letter and every piece of artwork fully opaque. No sprite data changed.
+
+```
+slSpriteCCalcCond(CC_MSB);
+slColRateSpr0(COUP_PANEL_BLEND);      /* CLRate24_8 */
+slColorCalc(CC_RATE | CC_TOP);
+slColorCalcOn(SPRON);
+```
+
+### The ratio came from captures
+
+Ink-to-background contrast on the rules screen - the worst case, because its
+backdrop is itself a table full of text:
+
+```
+opaque              176.2
+blend 20:12         105.2
+blend 24:8          129.2   <- shipped
+```
+
+### Two things measurement killed
+
+1. **Drawing a plate twice does not compound the blend.** Colour calculation
+   happens once, at VDP2 composite time, between the finished VDP1 framebuffer
+   and the background - it is not per-command. The captured frame was
+   identical to the decimal. A darker plate colour fails for the same reason.
+   **The ratio is the only control.**
+2. **`sgl_defs.h` already had a bogus colour-calculation block** defining
+   `CC_RATE` as `(1<<0)` and `CC_2ND` as `(1<<1)`; SL_DEF.H gives `0` and
+   `0x200`. Nothing used them, so nothing had broken - but adding the correct
+   values collided, and **only the host build caught it**. The Saturn build
+   does not use `-Werror`. Re-measured with the correct constant: identical,
+   because bit 0 is not part of the mode field. Harmless this time, which is
+   why it now has a test.
+
+### Legibility is gated, not assumed
+
+Blending trades readability for atmosphere, and a trade needs a number on both
+sides. `qa_legibility.py` measures ink-to-background contrast in each screen's
+densest text region and fails below 60 - well under every passing screen,
+well over the 40.4 that was genuinely hard to read.
+
+It immediately found a defect that predated all of this: the title's
+`[R] Rules` hint sat over the brightest part of the skyline with nothing
+behind it, at **40.4** against 95-135 everywhere else. Confirmed pre-existing
+rather than caused by blending (40.4 both before and after). With a plate and
+brighter ink it measures **143.6**.
+
+```
+connecting  90.4    game_over  131.6    settings  128.4
+game       115.8    lobby      124.4    title     131.0
+rules      120.2    name_entry 119.3
+```
