@@ -451,6 +451,19 @@ void coup_audio_start_music(void);
  * was supposed to be playing.
  */
 void coup_audio_restore_music(void);
+
+/** Counters proving the CD-DA restore path runs. Peeked over READ_CORE_RAM. */
+typedef struct {
+    uint32_t magic;
+    int32_t  restore_calls;         /* entered after a streamed scene load  */
+    int32_t  reissued;              /* CDC_CdPlay actually re-issued        */
+    int32_t  skipped_not_ready;     /* audio subsystem was not up           */
+    int32_t  skipped_not_playing;   /* this screen wants no music           */
+} coup_audio_witness_t;
+
+#define COUP_AUDIO_WITNESS_MAGIC 0x41554457u   /* 'AUDW' */
+
+extern coup_audio_witness_t g_coup_audio_witness;
 void coup_audio_stop_music(void);
 void coup_audio_set_music_volume(int vol);
 void coup_audio_set_sfx_volume(int vol);

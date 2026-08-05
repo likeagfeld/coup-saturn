@@ -337,8 +337,20 @@ void coup_audio_start_music(void)
     music_playing = true;
 }
 
+/* Witness for the CD-DA restore, read live over READ_CORE_RAM.
+ *
+ * Exported, not static: nobody has ever HEARD this build - the shared
+ * RetroArch config on the development machine is a headless capture rig with
+ * audio_driver "null", so every capture in this project was audio-disabled.
+ * The restore is implemented from documentation. This at least proves the
+ * path EXECUTES on a real scene change, which is the half of the claim that
+ * can be measured without ears. It does not prove sound comes out. */
+coup_audio_witness_t g_coup_audio_witness;
+
 void coup_audio_restore_music(void)
 {
+    g_coup_audio_witness.magic = COUP_AUDIO_WITNESS_MAGIC;
+    g_coup_audio_witness.restore_calls++;
     /* Re-issue playback after something else has taken the CD pickup.
      *
      * There is exactly ONE pickup and it is exclusive. Streaming a backdrop
@@ -355,10 +367,16 @@ void coup_audio_restore_music(void)
      *
      * Only re-issues if music was supposed to be playing, so it is safe to
      * call unconditionally after any disc read. */
-    if (!audio_ready || !music_playing) {
+    if (!audio_ready) {
+        g_coup_audio_witness.skipped_not_ready++;
+        return;
+    }
+    if (!music_playing) {
+        g_coup_audio_witness.skipped_not_playing++;
         return;
     }
     coup_audio_start_music();
+    g_coup_audio_witness.reissued++;
 }
 
 void coup_audio_stop_music(void)
@@ -428,8 +446,20 @@ void coup_audio_start_music(void)
     music_playing = true;
 }
 
+/* Witness for the CD-DA restore, read live over READ_CORE_RAM.
+ *
+ * Exported, not static: nobody has ever HEARD this build - the shared
+ * RetroArch config on the development machine is a headless capture rig with
+ * audio_driver "null", so every capture in this project was audio-disabled.
+ * The restore is implemented from documentation. This at least proves the
+ * path EXECUTES on a real scene change, which is the half of the claim that
+ * can be measured without ears. It does not prove sound comes out. */
+coup_audio_witness_t g_coup_audio_witness;
+
 void coup_audio_restore_music(void)
 {
+    g_coup_audio_witness.magic = COUP_AUDIO_WITNESS_MAGIC;
+    g_coup_audio_witness.restore_calls++;
     /* No disc off-target, so nothing can steal the pickup. */
 }
 
