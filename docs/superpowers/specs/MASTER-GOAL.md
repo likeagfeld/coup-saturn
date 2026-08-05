@@ -14,35 +14,36 @@ Branch `claude/saturn-visual-facelift`.
 | D1 | Data-driven only. No guessing, no assuming, no "looks right" | **BINDING** |
 | D2 | Adversarial QA on everything generated; gates must be proven RED first | **BINDING** |
 | D3 | Use RetroArch, not Mednafen, for live memory and snapshots | **WORKING** — see §7 |
-| D4 | Replace ALL original artwork with the official/generated art | in progress |
+| D4 | Replace ALL original artwork with the official/generated art | **DONE** — last original asset retired |
 | D5 | Animations and effects for every action | done, unit-tested |
 | D6 | Studio-grade visual quality; nothing pixelated or over-reduced | measured: 36–38 dB backgrounds |
 | D7 | Assets cleanly placed; text centred on buttons | padding-centred labels eliminated; 7 screens still position labels literally |
-| D8 | Complete the whole game end to end, every screen | **IN PROGRESS** |
+| D8 | Complete the whole game end to end, every screen | every screen has its own backdrop; label audit continues |
 | D9 | Server must stay turnkey — no protocol or rules changes | held; §8 unbroken |
-| D10 | Slight compression acceptable to fit more assets | done losslessly (45% saved) |
+| D10 | Slight compression acceptable to fit more assets | **not needed** — streaming removed the constraint |
 
 ---
 
 ## 2. Measured state (facts, not claims)
 
 ```
-host tests            278 / 278 green
+host tests            286 / 286 green
 verify_facelift       10 / 10 gates green
-fidelity              bg    game 36.4 dB, title 38.3 dB, rules 33.9 dB
-                      portraits 29.9–34.8 dB, 13–14/15 palette, detail 97–104%
-wordmark on screen    correlation peak 0.354 at offset (0,0), control 0.097
-WRAM-H headroom       197,344 B  (measured hang point 181,312 — G8 lies)
-                      ONLY 1,032 B above the 15,000 B safety margin
+fidelity              8 scenes, 33.9-38.4 dB, 254-255/255 palette,
+                      detail 103-107%
+                      portraits 29.9-34.8 dB, 13-14/15 palette, detail 97-104%
+wordmark on screen    correlation peak 0.400 at offset (0,0), control 0.097
+streamed scene load   72,192 B in 21 vblanks = 0.35 s   (budget 1.00 s)
+WRAM-H headroom       322,972 B, 141,660 above the measured hang point
 VDP1 textures         288,544 B, ends 0x057720 of 0x80000
-backgrounds resident  3 of 7 delivered (game, title, rules)
-labels                0 padding-centred; 1 computed, 140 literal of 141 draws
+backgrounds           8 of 8, all streamed from disc at full 8bpp
+labels                0 padding-centred; 11 computed of 142 draws
 ```
 
-**HEADROOM IS NEARLY EXHAUSTED.** The wordmark cost 8,016 B and left 1,032 B
-of slack over the safety margin. Nothing further of consequence fits in WRAM
-without removing something or moving assets to CD streaming. Treat P3 and P5
-as blocked on that decision, not merely unstarted.
+**HEADROOM IS NO LONGER THE BINDING CONSTRAINT.** It was 197,344 B with 1,032
+B of slack over the safety margin. Streaming the backgrounds and retiring the
+game-over sprite took it to 322,972 B, 141,660 above the hang point. Adding
+the eighth scene moved it by 32 bytes - scenes cost disc space now, not WRAM.
 
 **G8 IS NOT TRUSTWORTHY ALONE.** A build hung with 181,312 B headroom while G8
 reported GREEN. Gate F in `verify_facelift.py` enforces a 15 KB margin above
@@ -57,14 +58,20 @@ misplaced element, text centred, and a gate proves it.
 
 | Screen | Backdrop | Art | Layout | Done |
 |---|---|---|---|---|
-| Title | skyline ✅ | portraits ✅, wordmark ⚠️ | PLAY centred ✅ | **no** |
-| Lobby | falls back to title ⚠️ | seat panels | needs audit | no |
-| Connecting | title fallback ⚠️ | — | needs audit | no |
-| Rules | rules table ✅ | official overlay ✅ | hints only ✅ | **yes** |
-| Game | council chamber ✅ | portraits ✅, coins ✅, effects ✅ | needs audit | near |
-| Game over | own image | VICTORY/DEFEAT ✅ | needs audit | near |
-| Settings | title fallback ⚠️ | — | needs audit | no |
-| Name entry | title fallback ⚠️ | — | needs audit | no |
+| Splash | own, streamed | official | n/a | **yes** |
+| Title | skyline, streamed | portraits, wordmark | PLAY + hint centred | **yes** |
+| Lobby | own, streamed | seat panels | heading centred; seat rows literal | near |
+| Connecting | own, streamed | progress bar | heading + cancel centred | **yes** |
+| Rules | rules table, streamed | official overlay | heading centred; body left-aligned by design | **yes** |
+| Game | council chamber, streamed | portraits, coins, effects | no literal labels at all | **yes** |
+| Game over | victory/defeat, streamed | VICTORY/DEFEAT banner | heading + action centred | **yes** |
+| Settings | title art (front-end) | sliders | heading centred; option rows literal | near |
+| Name entry | title art (front-end) | — | heading, indicator, controls centred | **yes** |
+
+Title, settings and name entry share the title art on purpose: they are one
+continuous front-end, and changing the backdrop between them would read as a
+glitch rather than a scene change.
+
 
 ---
 
@@ -93,17 +100,20 @@ left-aligned body lines and must stay that way. The real work is the subset
 where a plate frames a label: those two must stay concentric. Convert those,
 then run `qa_centring.py --strict` to hold the line.
 
-### P3 — Remaining backgrounds
-Four delivered scenes do not fit: lobby, connecting, victory, defeat. Options,
-in order of preference:
-1. CD streaming — load the active scene from disc on transition. New subsystem.
-2. Reduce to 4bpp (16 colours) for the less detailed scenes — halves to 35,840 B.
-3. Accept the title fallback for minor screens.
+### P3 — Remaining backgrounds — **DONE**
+All eight scenes ship, streamed from the disc at full 8bpp. Lobby, connecting,
+victory and defeat had been falling back to the title art; they have their own
+now, and game over picks victory or defeat with the SAME win test its banner
+uses, so the two cannot disagree. See section 9 for why streaming rather than
+4bpp, and section 10 for the measured load time.
 
-### P4 — RetroArch harness — **DONE**, see §7
-
-### P5 — Boot splash
-`L2_boot_splash.png` (320×224, 255 colours) is delivered and unused.
+### P5 — Boot splash — **DONE**
+`L2_boot_splash.png` ships as scene 0. That index is deliberate:
+`saturn_bg_init()` displays scene 0 and is called immediately before every
+sprite, font and effect is loaded, so the splash covers that wait with artwork
+instead of a blank screen. It also stops a wasted load - scene 0 used to be
+the game table, fetched at boot only for the first rendered frame to replace
+it.
 
 ---
 
@@ -260,3 +270,58 @@ TCP buffers during a stall, so a brief block costs latency, not messages.
 **Budget: a scene load must complete in under 1.0 s, measured on the real
 build.** That is the "fast enough" bar. It is to be measured via a timer
 written to WRAM and read live over `READ_CORE_RAM`, not estimated.
+
+
+---
+
+## 10. CD streaming, as built and measured
+
+```
+subsystem     pal/saturn/saturn_cd.{c,h}    SGL CD API, synchronous load
+scene file    512 B big-endian RGB555 palette + 224 rows of 320 8bpp pixels
+              72,192 B each, 8.3 uppercase names (ISO9660 mangles longer)
+staging       one 72,192 B buffer, replacing N resident const tables
+load time     21 vblanks = 0.35 s      MEASURED on the running console
+budget        60 vblanks = 1.00 s
+server bound  12.0 s (CHALLENGE_TIMEOUT / BLOCK_TIMEOUT)
+```
+
+Timing is measured, not estimated: `saturn_cd.c` counts VDP2 TVSTAT vblank
+edges across each load into `g_saturn_cd_stats`, and `qa_cd_budget.py` finds
+that symbol in the linker map and reads it live over `READ_CORE_RAM`. Vblank
+edges rather than the SH-2 free running timer because SL_DEF.H offers no way
+to ask how SGL has programmed the prescaler.
+
+Three things about this that are easy to get wrong:
+
+1. **The link line needs `--start-group`.** LIBCD.A needs `slDMAXCopy` and
+   `slDMAStatus` from LIBSGL.A, and `SetCDFunc`, `CSH_Purge` and the
+   `DMA_Scu*` helpers from SEGA_SYS.A - all listed before it. Without the
+   group every one comes back undefined, and the natural reading is that SGL
+   3.02j has no CD support.
+2. **SGL_CD.H cannot be included.** It pulls in SGL.H/SL_DEF.H, which collide
+   with this PAL's own bare declarations. The CD types live in `sgl_defs.h`,
+   each cited to its header and line.
+3. **The scene `.BIN` files are tracked in git, not ignored.** The hermetic
+   Saturn image has no Python or Pillow, so it copies them onto the disc but
+   cannot regenerate them. Ignoring them would make a fresh clone build a disc
+   whose every background is black, with no build-time symptom.
+
+`verify_facelift` gate A fails if a declared scene has no file on the disc,
+because that failure has no other build-time signal.
+
+---
+
+## 11. What remains
+
+**Label placement.** 11 of 142 text draws are computed; the rest take a
+literal position. Most are correct as they stand - the rules screen alone has
+83 left-aligned body lines that must NOT be centred, and lobby seat rows are a
+left-aligned list. The real remaining work is the subset where a plate frames
+a label. `qa_centring.py --strict` enforces it once that is done.
+
+**Screens not yet seen on hardware.** Title and the boot path are captured and
+gated. Lobby, connecting, game and game over are behind online play; their
+backdrops and label placement are verified by gate and by host test rather
+than by capture. Reaching them needs either input injection or a server
+session.
