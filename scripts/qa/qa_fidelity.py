@@ -38,9 +38,10 @@ from PIL import Image, ImageFilter
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "examples", "coup", "assets"))
 try:
-    from convert_backgrounds import lift_shadows
+    from convert_backgrounds import lift_shadows, trim_panel_seam
 except ImportError:
     lift_shadows = None
+    trim_panel_seam = None
 
 PSNR_MIN = 26.0        # below this, degradation is visible
 PALETTE_USE_MIN = 0.85  # must use at least 85% of available slots
@@ -125,7 +126,15 @@ def check_background(scene, src_png, bin_path):
     out = Image.new("RGB", (w, h))
     out.putdata([rgb555_to_rgb(pal[b]) for b in data[: w * h]])
 
-    ref = Image.open(src_png).convert("RGB").resize((w, h), Image.LANCZOS)
+    # The reference must go through EVERY deliberate transform the converter
+    # applies - seam trim then shadow lift, in that order - or this gate
+    # measures the artistic decisions instead of the quantization. That has
+    # now bitten twice: the shadow lift dropped game to 21.3 dB (really 37.8)
+    # and the seam trim dropped defeat to 20.0 dB (really ~37).
+    ref = Image.open(src_png).convert("RGB")
+    if trim_panel_seam is not None:
+        ref, _t = trim_panel_seam(ref)
+    ref = ref.resize((w, h), Image.LANCZOS)
     if lift_shadows is not None:
         ref, _g = lift_shadows(ref)
 
