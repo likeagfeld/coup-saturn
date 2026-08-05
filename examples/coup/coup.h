@@ -398,6 +398,18 @@ void coup_start_game(uint32_t seed, uint8_t my_pid);
  * Rendering API (coup_render.c)
  *============================================================================*/
 
+/** Snapshot of the fields the effect trigger diffs against. */
+typedef struct {
+    int action;
+    int phase;
+    int blocker_id;
+} coup_fx_prev_t;
+
+/* Effect trigger - pure logic, unit tested on the host. */
+int  coup_fx_for_action(int action);
+int  coup_fx_on_transition(const coup_fx_prev_t* prev, const coup_state_t* st);
+void coup_fx_remember(coup_fx_prev_t* prev, const coup_state_t* st);
+
 void coup_render_screen(const coup_state_t* st);
 
 #ifdef __SATURN__

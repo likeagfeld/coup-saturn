@@ -206,6 +206,90 @@ static int safe_copy(char* dst, const char* src, int max_len)
     return i;
 }
 
+/*============================================================================
+ * Action effects
+ *
+ * The TRIGGER is pure logic and compiles on every platform, so it is unit
+ * tested on the host (tests/coup/test_fx_trigger.c). Only the VDP1 draw is
+ * Saturn-only. Effects are driven by OBSERVING state transitions; nothing in
+ * coup_game.c or the protocol is touched, so the turnkey server contract in
+ * spec section 8 is unaffected.
+ *============================================================================*/
+
+#define COUP_FX_HOLD_FRAMES 3
+
+/* Sentinel for "no player", per coup_table_view.h. */
+#define COUP_FX_NO_PLAYER 0xFF
+
+/* Effect ids. Kept in step with COUP_FX_* in the generated header, which is
+ * asserted at compile time on Saturn below. */
+#define COUP_FXID_NONE        (-1)
+#define COUP_FXID_COUP          0
+#define COUP_FXID_ASSASSINATE   1
+#define COUP_FXID_STEAL         2
+#define COUP_FXID_TAX           3
+#define COUP_FXID_EXCHANGE      4
+#define COUP_FXID_BLOCK         5
+#define COUP_FXID_CHALLENGE     6
+
+/** Map a declared action to the effect that dramatises it. Pure. */
+int coup_fx_for_action(int action)
+{
+    switch (action) {
+    case COUP_ACT_COUP:         return COUP_FXID_COUP;
+    case COUP_ACT_ASSASSINATE:  return COUP_FXID_ASSASSINATE;
+    case COUP_ACT_STEAL:        return COUP_FXID_STEAL;
+    case COUP_ACT_EXCHANGE:     return COUP_FXID_EXCHANGE;
+    case COUP_ACT_TAX:
+    case COUP_ACT_INCOME:
+    case COUP_ACT_FOREIGN_AID:  return COUP_FXID_TAX;
+    default:                    return COUP_FXID_NONE;
+    }
+}
+
+/**
+ * Decide which effect a state transition should fire, if any. Pure.
+ *
+ * @param prev  previously observed state
+ * @param st    current state
+ * @return effect id, or COUP_FXID_NONE
+ */
+int coup_fx_on_transition(const coup_fx_prev_t* prev, const coup_state_t* st)
+{
+    if (!prev || !st) {
+        return COUP_FXID_NONE;
+    }
+    /* A block is the most specific event, so it wins over the action that
+     * provoked it. */
+    /* 0xFF means "no blocker" (coup_table_view.h). These fields are uint8_t,
+     * so a >= 0 test would be vacuous. */
+    if (st->blocker_id != COUP_FX_NO_PLAYER &&
+        (int)st->blocker_id != prev->blocker_id) {
+        return COUP_FXID_BLOCK;
+    }
+    if ((int)st->phase != prev->phase &&
+        st->phase == COUP_PHASE_CHALLENGE_WAIT) {
+        return COUP_FXID_CHALLENGE;
+    }
+    if (st->declared_actor != COUP_FX_NO_PLAYER &&
+        (int)st->declared_action != prev->action) {
+        return coup_fx_for_action((int)st->declared_action);
+    }
+    return COUP_FXID_NONE;
+}
+
+/** Record the state just observed, so the next call can diff against it. */
+void coup_fx_remember(coup_fx_prev_t* prev, const coup_state_t* st)
+{
+    if (!prev || !st) {
+        return;
+    }
+    prev->action = (int)st->declared_action;
+    prev->phase = (int)st->phase;
+    prev->blocker_id = st->blocker_id;
+}
+
+
 static const coup_player_t* find_self(const coup_state_t* st)
 {
     int i;
@@ -262,70 +346,23 @@ static void portrait_medallion(int x, int y, int w, int h)
     panel_lit(x + 2, y + 2, w - 4, h - 4, COUP_PORTRAIT_BG, COUP_GRD_PANEL);
 }
 
-/*============================================================================
- * Action effects
- *
- * Triggered by OBSERVING state transitions from the render layer. Nothing in
- * coup_game.c or the protocol is touched, so the server contract in spec
- * section 8 is unaffected - this is read-only.
- *============================================================================*/
-
-#define COUP_FX_HOLD_FRAMES 3        /* frames each effect frame is held */
-
-static int s_fx_active = -1;         /* COUP_FX_* currently playing, or -1 */
+#ifdef __SATURN__
+static int s_fx_active = COUP_FXID_NONE;
 static int s_fx_tick = 0;
 static int s_fx_x, s_fx_y;
+static coup_fx_prev_t s_fx_prev = { -1, -1, -1 };
 
-/** Map a declared action to the effect that dramatises it. */
-static int fx_for_action(int action)
-{
-    switch (action) {
-    case COUP_ACT_COUP:         return COUP_FX_COUP;
-    case COUP_ACT_ASSASSINATE:  return COUP_FX_ASSASSINATE;
-    case COUP_ACT_STEAL:        return COUP_FX_STEAL;
-    case COUP_ACT_EXCHANGE:     return COUP_FX_EXCHANGE;
-    case COUP_ACT_TAX:
-    case COUP_ACT_INCOME:
-    case COUP_ACT_FOREIGN_AID:  return COUP_FX_TAX;
-    default:                    return -1;
-    }
-}
-
-/** Begin an effect centred on the table. */
-static void fx_start(int fx)
-{
-    if (fx < 0 || !coup_fx_loaded()) {
-        return;
-    }
-    s_fx_active = fx;
-    s_fx_tick = 0;
-    s_fx_x = (COUP_SCREEN_W - 64) / 2;
-    s_fx_y = 84;
-}
-
-/** Watch for the transitions worth dramatising. */
+/** Observe, then start whatever the transition calls for. */
 static void fx_observe(const coup_state_t* st)
 {
-    static int prev_action = -1;
-    static int prev_phase = -1;
-    static int prev_blocker = -1;
-
-    int action = (int)st->declared_action;
-    int phase = (int)st->phase;
-
-    if (st->declared_actor >= 0 && action != prev_action && action >= 0) {
-        fx_start(fx_for_action(action));
+    int fx = coup_fx_on_transition(&s_fx_prev, st);
+    if (fx != COUP_FXID_NONE && coup_fx_loaded()) {
+        s_fx_active = fx;
+        s_fx_tick = 0;
+        s_fx_x = (COUP_SCREEN_W - 64) / 2;
+        s_fx_y = 84;
     }
-    if (phase != prev_phase && phase == COUP_PHASE_CHALLENGE_WAIT) {
-        fx_start(COUP_FX_CHALLENGE);
-    }
-    if (st->blocker_id >= 0 && st->blocker_id != prev_blocker) {
-        fx_start(COUP_FX_BLOCK);
-    }
-
-    prev_action = action;
-    prev_phase = phase;
-    prev_blocker = st->blocker_id;
+    coup_fx_remember(&s_fx_prev, st);
 }
 
 /** Draw and advance the running effect, if any. */
@@ -333,24 +370,23 @@ static void fx_render(void)
 {
     int frames, frame;
 
-    if (s_fx_active < 0) {
+    if (s_fx_active == COUP_FXID_NONE) {
         return;
     }
     frames = coup_fx_frames(s_fx_active);
     if (frames <= 0) {
-        s_fx_active = -1;
+        s_fx_active = COUP_FXID_NONE;
         return;
     }
-
     frame = s_fx_tick / COUP_FX_HOLD_FRAMES;
     if (frame >= frames) {
-        s_fx_active = -1;           /* sequence complete */
+        s_fx_active = COUP_FXID_NONE;
         return;
     }
-
     coup_fx_draw(s_fx_active, frame, s_fx_x, s_fx_y);
     s_fx_tick++;
 }
+#endif
 
 /** Draw a row of background tiles across the screen width.
  *  10 tiles at 32px each = 320px. Uses 10 VDP1 commands. */
@@ -562,9 +598,11 @@ static void coup_render_rules(const coup_state_t* st)
     screen_bg(L->bg, COUP_BG_DARK);
 
 #ifdef __SATURN__
-    /* Decorative background tiles */
+    /* The official rules table IS the backdrop on Saturn (COUP_BG_SCENE_RULES),
+     * so the decorative tiles and per-page portrait would only obscure it.
+     * Keep the page indicator and hints, which the art does not provide. */
+#if 0
     draw_bg_row(L->bg_tile_y);
-    /* Different character portrait per rules page (decorative backdrop) */
     if (pg > 0 && coup_sprites_loaded()) {
         static const int page_portrait[COUP_RULES_PAGES - 1] = {
             COUP_SPR_AMBASSADOR, COUP_SPR_CAPTAIN, COUP_SPR_DUKE,
@@ -572,6 +610,7 @@ static void coup_render_rules(const coup_state_t* st)
         };
         coup_sprites_draw(page_portrait[pg - 1], L->portrait_pos.x, L->portrait_pos.y);
     }
+#endif
 #endif
 
     /* Header bar */
@@ -1982,7 +2021,7 @@ void coup_render_screen(const coup_state_t* st)
                 int scene;
                 switch (st->screen) {
                 case COUP_SCREEN_GAME:  scene = COUP_BG_SCENE_GAME;  break;
-                case COUP_SCREEN_LOBBY: scene = COUP_BG_SCENE_LOBBY; break;
+                case COUP_SCREEN_RULES: scene = COUP_BG_SCENE_RULES; break;
                 /* Game over keeps its own full-screen image, so it needs no
                  * dedicated backdrop; everything else uses the title art. */
                 default:                scene = COUP_BG_SCENE_TITLE; break;
