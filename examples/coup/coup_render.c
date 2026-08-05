@@ -98,7 +98,6 @@ static void panel_lit(int x, int y, int w, int h, uint32_t color, int slot)
 }
 #endif
 
-#ifdef __SATURN__
 /**
  * Width in pixels of `s` in the currently active sprite font.
  *
@@ -109,17 +108,44 @@ static void panel_lit(int x, int y, int w, int h, uint32_t color, int slot)
  */
 static int text_px_w(const char* s)
 {
-    const saturn_font_registry_t* reg = cui_saturn_font_get_registry();
-    const saturn_font_entry_t* e = reg ? saturn_font_get_active_entry(reg) : 0;
-    int adv = (e && e->desc.advance_x > 0) ? e->desc.advance_x
-                                           : COUP_FONT_ADVANCE;
     int n = 0;
     while (s[n]) {
         n++;
     }
-    return n * adv;
+#ifdef __SATURN__
+    {
+        const saturn_font_registry_t* reg = cui_saturn_font_get_registry();
+        const saturn_font_entry_t* e = reg ? saturn_font_get_active_entry(reg)
+                                           : 0;
+        int adv = (e && e->desc.advance_x > 0) ? e->desc.advance_x
+                                               : COUP_FONT_ADVANCE;
+        return n * adv;
+    }
+#else
+    return n * COUP_FONT_ADVANCE;
+#endif
 }
 
+/**
+ * Draw `text` horizontally centred on screen at grid row `row`.
+ *
+ * Replaces the older habit of padding a string literal with leading spaces to
+ * push it towards the middle. That padding is only correct for the exact
+ * string and the exact advance in place when it was counted - change either
+ * and the label drifts, silently. Here the offset is derived from the string
+ * actually being drawn.
+ */
+static void draw_centered(int row, const char* text, uint32_t color)
+{
+    int x = (COUP_SCREEN_W - text_px_w(text)) / 2;
+
+    if (x < 0) {
+        x = 0;
+    }
+    CUI_DISPLAY()->draw_text_sprite(x, row * COUP_FONT_ROW_H, text, color);
+}
+
+#ifdef __SATURN__
 /**
  * Draw a brass-framed plate with its label centred both ways.
  *
@@ -914,7 +940,7 @@ static void coup_render_name_entry(const coup_state_t* st)
 
     /* === Text === */
 
-    draw_at(L->header_col, L->header_row, "     ENTER YOUR NAME", COUP_TEXT_YELLOW);
+    draw_centered(L->header_row, "ENTER YOUR NAME", COUP_TEXT_YELLOW);
 
     /* Name buffer with cursor blink */
     {
@@ -955,14 +981,14 @@ static void coup_render_name_entry(const coup_state_t* st)
         if (st->name_cursor < st->name_len) {
             cur_char = st->name_buf[st->name_cursor];
         }
-        snprintf(indicator, sizeof(indicator), "      ^  [%c]  v", cur_char);
-        draw_at(L->indicator_col, L->indicator_row, indicator, COUP_TEXT_YELLOW);
+        snprintf(indicator, sizeof(indicator), "^  [%c]  v", cur_char);
+        draw_centered(L->indicator_row, indicator, COUP_TEXT_YELLOW);
     }
 
     /* Controls */
     draw_at(L->ctrl_col, L->ctrl_start_row, "UP/DOWN: Change Letter", COUP_TEXT_GRAY);
     draw_at(L->ctrl_col, L->ctrl_start_row + 1, "LEFT/RIGHT: Move Cursor", COUP_TEXT_GRAY);
-    draw_at(L->ctrl_col, L->submit_row, "  [A] Submit   [B] Delete", COUP_TEXT_WHITE);
+    draw_centered(L->submit_row, "[A] Submit   [B] Delete", COUP_TEXT_WHITE);
 }
 
 /*============================================================================
@@ -1197,8 +1223,12 @@ static void coup_render_lobby(const coup_state_t* st)
             if (st->name_cursor < st->name_len) {
                 cur_char = st->name_buf[st->name_cursor];
             }
-            snprintf(indicator, sizeof(indicator), "      ^  [%c]  v", cur_char);
-            CUI_DISPLAY()->draw_text_sprite(52, 96, indicator, COUP_TEXT_YELLOW);
+            snprintf(indicator, sizeof(indicator), "^  [%c]  v", cur_char);
+            {
+                int ix = 52 + (160 - text_px_w(indicator)) / 2;
+                CUI_DISPLAY()->draw_text_sprite(ix, 96, indicator,
+                                                COUP_TEXT_YELLOW);
+            }
         }
 
         /* Character scroll panel */
@@ -1948,7 +1978,7 @@ static void coup_render_game_over(const coup_state_t* st)
     }
 #else
     panel_r(GO->bg, COUP_BG_DARK);
-    draw_at(GO->gameover_col, GO->gameover_row, "     GAME  OVER", COUP_TEXT_RED);
+    draw_centered(GO->gameover_row, "GAME OVER", COUP_TEXT_RED);
 #endif
 
 #ifdef __SATURN__
@@ -1990,7 +2020,7 @@ static void coup_render_game_over(const coup_state_t* st)
 
 #ifndef __SATURN__
     /* Non-Saturn: show instructions since there's no background image */
-    draw_at(GO->return_col, GO->return_row, "  [A] Return to Lobby", COUP_TEXT_WHITE);
+    draw_centered(GO->return_row, "[A] Return to Lobby", COUP_TEXT_WHITE);
 #endif
 }
 

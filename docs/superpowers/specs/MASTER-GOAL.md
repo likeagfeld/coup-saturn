@@ -13,11 +13,11 @@ Branch `claude/saturn-visual-facelift`.
 |---|---|---|
 | D1 | Data-driven only. No guessing, no assuming, no "looks right" | **BINDING** |
 | D2 | Adversarial QA on everything generated; gates must be proven RED first | **BINDING** |
-| D3 | Use RetroArch, not Mednafen, for live memory and snapshots | **BLOCKED** — not installed; harness written and waiting |
+| D3 | Use RetroArch, not Mednafen, for live memory and snapshots | **WORKING** — see §7 |
 | D4 | Replace ALL original artwork with the official/generated art | in progress |
 | D5 | Animations and effects for every action | done, unit-tested |
 | D6 | Studio-grade visual quality; nothing pixelated or over-reduced | measured: 36–38 dB backgrounds |
-| D7 | Assets cleanly placed; text centred on buttons | done for PLAY; audit rest |
+| D7 | Assets cleanly placed; text centred on buttons | padding-centred labels eliminated; 7 screens still position labels literally |
 | D8 | Complete the whole game end to end, every screen | **IN PROGRESS** |
 | D9 | Server must stay turnkey — no protocol or rules changes | held; §8 unbroken |
 | D10 | Slight compression acceptable to fit more assets | done losslessly (45% saved) |
@@ -29,12 +29,20 @@ Branch `claude/saturn-visual-facelift`.
 ```
 host tests            278 / 278 green
 verify_facelift       10 / 10 gates green
-fidelity              bg 36.4–38.3 dB, 255/255 palette, detail 105–107%
+fidelity              bg    game 36.4 dB, title 38.3 dB, rules 33.9 dB
                       portraits 29.9–34.8 dB, 13–14/15 palette, detail 97–104%
-WRAM-H headroom       205,360 B  (measured hang point 181,312 — G8 lies)
-VDP1 textures         280,352 B, ends 0x055720 of 0x80000
+wordmark on screen    correlation peak 0.354 at offset (0,0), control 0.097
+WRAM-H headroom       197,344 B  (measured hang point 181,312 — G8 lies)
+                      ONLY 1,032 B above the 15,000 B safety margin
+VDP1 textures         288,544 B, ends 0x057720 of 0x80000
 backgrounds resident  3 of 7 delivered (game, title, rules)
+labels                0 padding-centred; 1 computed, 140 literal of 141 draws
 ```
+
+**HEADROOM IS NEARLY EXHAUSTED.** The wordmark cost 8,016 B and left 1,032 B
+of slack over the safety margin. Nothing further of consequence fits in WRAM
+without removing something or moving assets to CD streaming. Treat P3 and P5
+as blocked on that decision, not merely unstarted.
 
 **G8 IS NOT TRUSTWORTHY ALONE.** A build hung with 181,312 B headroom while G8
 reported GREEN. Gate F in `verify_facelift.py` enforces a 15 KB margin above
@@ -62,20 +70,28 @@ misplaced element, text centred, and a gate proves it.
 
 ## 4. Open work, in priority order
 
-### P1 — Title wordmark (REGRESSION, my error)
-I removed the logo sprite after mis-measuring: I counted gold pixels in the
-title backdrop and read the **sunset** as an embedded wordmark. `B1_title.png`
-is a pure skyline with no logo. The title currently has **no branding**.
+### P1 — Title wordmark — **DONE**, verified on a captured frame
+Fixed in 484a3ca. The sprite is drawn at (32, 2), keyed on its dark backing by
+a border-connected flood fill, with no plate behind it. Proven on hardware
+output by `qa_title_wordmark.py`: masked correlation peaks at 0.354 exactly at
+the placed position, against 0.097 for the same template on the logo-less
+backdrop, which the gate runs as a negative control every time.
 
-Fix: draw the pack's `L1_wordmark.png` (256×64, 15 colours) as a sprite with
-its dark backing keyed out (MEASURED: threshold `max(rgb) <= 56` keys 63%),
-and **no header panel behind it** — the panel was the real thing that looked
-wrong over the art.
+### P2 — Layout audit, every screen — **PARTLY DONE**
+`qa_centring.py` audits every render function and classifies each text draw by
+how its x position is derived.
 
-### P2 — Layout audit, every screen
-Text centred on every button and panel, using `text_px_w()` — never an assumed
-advance. The Alagard face advances **8 px**, not 16; assuming otherwise put
-labels 16 px off. Add a gate that fails if any label is positioned by a literal.
+Done: the worst class is gone. Six labels were centred by padding a string
+literal with spaces (`"     GAME  OVER"`, `"      ^  [%c]  v"`, and others) —
+centring correct only for that exact string at that exact advance. They now use
+`draw_centered()`, which measures the string. The gate fires RED on the
+pre-fix source (4 hits from git) and is clean now.
+
+Remaining: 140 of 141 text draws still take a literal position, across 7
+screens. **Not all of these are defects** — the rules screen's 84 draws are
+left-aligned body lines and must stay that way. The real work is the subset
+where a plate frames a label: those two must stay concentric. Convert those,
+then run `qa_centring.py --strict` to hold the line.
 
 ### P3 — Remaining backgrounds
 Four delivered scenes do not fit: lobby, connecting, victory, defeat. Options,
@@ -84,13 +100,7 @@ in order of preference:
 2. Reduce to 4bpp (16 colours) for the less detailed scenes — halves to 35,840 B.
 3. Accept the title fallback for minor screens.
 
-### P4 — RetroArch harness
-`scripts/qa/qa_retroarch.py` is written and ready: live `READ_CORE_RAM`, the
-byte-pair-swap correction, and the SYSTEM_RAM offset map. It needs RetroArch +
-the Beetle Saturn core installed, with `beetle_saturn_cart = "Extended RAM
-(4MB)"` and network commands enabled on port 55355.
-**VRAM/CRAM are not in SYSTEM_RAM** — those still need a savestate, which the
-same core produces and `mcs_extract.py` parses.
+### P4 — RetroArch harness — **DONE**, see §7
 
 ### P5 — Boot splash
 `L2_boot_splash.png` (320×224, 255 colours) is delivered and unused.
@@ -125,3 +135,66 @@ same core produces and `mcs_extract.py` parses.
 - Headroom above the measured hang point with margin
 - A capture per screen, committed
 - No asset from the original game still shipping where official art exists
+
+
+---
+
+## 7. RetroArch on this machine (D3) — working
+
+MEASURED 2026-08-05.
+
+```
+retroarch  D:\sonicmaniasaturn\tools\retroarch\RetroArch-Win64\retroarch.exe
+core       cores\mednafen_saturn_libretro.dll
+cart       beetle_saturn_cart = "Extended RAM (4MB)"   (already set)
+BIOS       sega_101.bin, mpr-17933.bin, mpr-18811-mx.ic1  (present)
+```
+
+It was reported "not installed" for most of this project because the harness
+matched only the name `beetle_saturn`, and the installed file uses upstream's
+`mednafen_saturn` name. Same emulator. Both are accepted now.
+
+**This machine is shared — another agent runs RetroArch here.** Two rules, both
+enforced in `qa_retroarch.py`, neither optional:
+
+1. Never enumerate-and-kill retroarch processes. The Mednafen harness in the
+   Saturn skill does a blanket taskkill; copying that here would destroy the
+   other session. We record the pid we spawn and terminate only that pid.
+2. Bind port 55366, not the default 55355. A read on the default could be
+   answered by their emulator running a different game — not a wrong answer we
+   would notice, but a plausible one. Verified in practice: a capture ran while
+   one of their instances was live, and both survived.
+
+Their `retroarch.cfg` and `retroarch-core-options.cfg` are never written; our
+settings go through `--appendconfig`.
+
+Gotcha #3 still applies — a second emulator steals host CPU, so a fixed
+wall-clock capture can land in the wrong phase. Every gate that reads a frame
+validates it first and reports INCONCLUSIVE rather than RED on a bad capture.
+
+**A cue whose files are not all present boots the BIOS CD player, not the
+game.** `examples/coup/saturn/_build/game.cue` declares an audio track that
+directory does not contain; captures from it show the BIOS and look exactly
+like a boot failure. Capture from `build/coup_game/`, which holds the whole
+disc. `qa_retroarch.py` now preflights this.
+
+**VRAM/CRAM are not in SYSTEM_RAM** — `READ_CORE_RAM` exposes WRAM only. For
+VDP1/VDP2 memory take a savestate; the core is Mednafen's, so `mcs_extract.py`
+parses it.
+
+---
+
+## 8. Gates and what each one actually proves
+
+| Gate | Proves | Proven to fail on |
+|---|---|---|
+| `verify_facelift.py` | 10 structural invariants | see its own notes |
+| `qa_fidelity.py` | conversion loses no more than it must | wrong-source scene (3.7 dB) |
+| `qa_portraits.py` | portraits fully opaque, animate | — |
+| `qa_title_wordmark.py` | wordmark is ON SCREEN, at its position | the logo-less backdrop |
+| `qa_centring.py` | no label centred by space padding | pre-fix source, 4 hits |
+| `qa_retroarch.py --check` | emulator + core + shared-host safety | missing core, unresolvable cue |
+
+Two gates were themselves defective and were fixed rather than trusted:
+`qa_fidelity` guessed each scene's source art (the converter now records it in
+the header), and `qa_retroarch` matched only one of the core's two names.
