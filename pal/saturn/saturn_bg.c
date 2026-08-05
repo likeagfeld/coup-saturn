@@ -83,6 +83,29 @@ static bool saturn_bg_upload(int scene)
         for (x = 0; x < COUP_BG_VISIBLE_W; x++) {
             dst[x] = row[x];
         }
+        /* Clear the rest of the row. The plane is 512 px wide (BM_512x256)
+         * but a scene only carries the visible 320, so columns 320-511 kept
+         * whatever the PREVIOUS scene left there. That residue is what was
+         * reported as "a sliver of a neighbouring background image" on the
+         * right-hand edge - it is not a neighbour from the source sheet,
+         * which is why it survived every seam fix on the asset side. The
+         * art is provably clean: convert_backgrounds.py crops the seam and
+         * resizes back to a full 320, so nothing reaches the disc with a
+         * neighbour column in it.
+         *
+         * Index 0 is the reserved transparent entry, so the cleared margin
+         * shows the back screen rather than stale art. */
+        for (x = COUP_BG_VISIBLE_W; x < COUP_BG_W; x++) {
+            dst[x] = 0;
+        }
+    }
+    /* Same for the rows below the picture: the plane is 256 tall and a scene
+     * is 224, so rows 224-255 also held the previous scene. */
+    for (y = COUP_BG_VISIBLE_H; y < COUP_BG_H; y++) {
+        volatile uint8_t* dst = vram + (uint32_t)y * COUP_BG_W;
+        for (x = 0; x < COUP_BG_W; x++) {
+            dst[x] = 0;
+        }
     }
     (void)i;
 
