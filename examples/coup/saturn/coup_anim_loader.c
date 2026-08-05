@@ -31,6 +31,7 @@
  * Animation: banks 32-36 (5 banks, one per character) */
 /* Chained from the game-over loader at load time, not recomputed. */
 static int s_cram_base = 0;
+static uint32_t s_vram_end = 0;
 #define ANIM_CRAM_BASE_BANK  s_cram_base
 
 /*============================================================================
@@ -74,6 +75,7 @@ void coup_anim_load(void)
                                    coup_anim_palettes[ci]);
     }
 
+    s_vram_end = vram_cursor;
     s_loaded = true;
 }
 
@@ -121,4 +123,14 @@ bool coup_anim_draw_scaled(int character, int frame, int x, int y,
 bool coup_anim_loaded(void)
 {
     return s_loaded;
+}
+
+uint32_t coup_anim_vram_end(void)
+{
+    return s_vram_end;
+}
+
+int coup_anim_cram_end_bank(void)
+{
+    return s_cram_base + COUP_ANIM_CHARS;
 }

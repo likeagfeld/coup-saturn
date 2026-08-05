@@ -13,6 +13,7 @@
 #define COUP_ANIM_LOADER_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /**
  * Load all animated sprite frame data into VDP1 VRAM and palettes to CRAM.
@@ -50,5 +51,14 @@ bool coup_anim_draw_scaled(int character, int frame, int x, int y,
  * Check if animated sprites have been loaded.
  */
 bool coup_anim_loaded(void);
+
+/**
+ * Byte offset just past this loader's VDP1 data, and the first free CRAM
+ * bank after its palettes. Loaders CHAIN - never recompute a base from
+ * constants. See coup_sprites_vram_end() for why.
+ * Valid after coup_anim_load().
+ */
+uint32_t coup_anim_vram_end(void);
+int coup_anim_cram_end_bank(void);
 
 #endif /* COUP_ANIM_LOADER_H */

@@ -25,7 +25,10 @@
 #include "coup_gameover_loader.h"
 #include "coup_anim_loader.h"
 #include "coup_anim_sprites.h"
+#include "coup_fx_loader.h"
+#include "coup_fx_data.h"
 #include "saturn_pal.h"          /* cui_saturn_font_set_active */
+#include "saturn_font.h"         /* saturn_font_registry_t, advance_x */
 #include "saturn_fade.h"
 #include "saturn_vdp1.h"
 #include "saturn_vdp2.h"
@@ -92,6 +95,54 @@ static void panel_lit(int x, int y, int w, int h, uint32_t color, int slot)
         return;
     }
     CUI_DISPLAY()->draw_rect(x, y, w, h, color);
+}
+#endif
+
+#ifdef __SATURN__
+/**
+ * Width in pixels of `s` in the currently active sprite font.
+ *
+ * MEASURED: the 16x16 Alagard display face has advance_x = 8, NOT 16. Assuming
+ * the advance matches the cell size put every label 16 px left of centre on its
+ * button. Always ask the font for its advance rather than inferring it from the
+ * cell.
+ */
+static int text_px_w(const char* s)
+{
+    const saturn_font_registry_t* reg = cui_saturn_font_get_registry();
+    const saturn_font_entry_t* e = reg ? saturn_font_get_active_entry(reg) : 0;
+    int adv = (e && e->desc.advance_x > 0) ? e->desc.advance_x
+                                           : COUP_FONT_ADVANCE;
+    int n = 0;
+    while (s[n]) {
+        n++;
+    }
+    return n * adv;
+}
+
+/**
+ * Draw a brass-framed plate with its label centred both ways.
+ *
+ * Centring is computed from the measured label width, so it stays correct if
+ * the font, the text or the padding changes.
+ */
+static void button_centered(int x, int y, int w, int h, const char* label,
+                            int font, uint32_t fill, uint32_t text_col,
+                            int grd_slot)
+{
+    int prev = cui_saturn_font_get_active();
+    int tw, tx, ty;
+
+    panel(x, y, w, h, COUP_FRAME_BRASS);
+    panel_lit(x + 2, y + 2, w - 4, h - 4, fill, grd_slot);
+
+    cui_saturn_font_set_active(font);
+    tw = text_px_w(label);
+    tx = x + (w - tw) / 2;
+    ty = y + (h - COUP_FONT_ROW_H * 2) / 2;   /* 16 px display glyph */
+
+    CUI_DISPLAY()->draw_text_sprite(tx, ty, label, text_col);
+    cui_saturn_font_set_active(prev);
 }
 #endif
 
@@ -319,25 +370,21 @@ static void coup_render_title(const coup_state_t* st)
     /* Single centered "Play" button */
 #ifdef __SATURN__
     {
-        /* Brass-framed plate with the 16x16 display face. PLAY is 4 glyphs at
-         * 16 px, so the plate is sized from the glyph metrics rather than the
-         * 8x8 body font's. */
-        const int label_w = 4 * 16;
-        const int label_h = 16;
-        const int pad_x = 10, pad_y = 4;
-        int bw = label_w + pad_x * 2;
-        int bh = label_h + pad_y * 2;
-        int bx = (COUP_SCREEN_W - bw) / 2;
-        int by = L->menu_y - pad_y;
-
-        panel(bx, by, bw, bh, COUP_FRAME_BRASS);
-        panel_lit(bx + 2, by + 2, bw - 4, bh - 4, COUP_PANEL_SELECT,
-                  COUP_GRD_RAISED);
+        /* Plate sized from the MEASURED label width, not an assumed advance. */
+        const int pad_x = 14, pad_y = 5;
+        int tw, bw, bh, bx;
 
         cui_saturn_font_set_active(COUP_FONT_DISPLAY);
-        CUI_DISPLAY()->draw_text_sprite(bx + pad_x, by + pad_y, "PLAY",
-                                        COUP_TEXT_GOLD);
+        tw = text_px_w("PLAY");
         cui_saturn_font_set_active(COUP_FONT_BODY);
+
+        bw = tw + pad_x * 2;
+        bh = COUP_FONT_ROW_H * 2 + pad_y * 2;
+        bx = (COUP_SCREEN_W - bw) / 2;
+
+        button_centered(bx, L->menu_y - pad_y, bw, bh, "PLAY",
+                        COUP_FONT_DISPLAY, COUP_PANEL_SELECT,
+                        COUP_TEXT_GOLD, COUP_GRD_RAISED);
     }
 #else
     {
@@ -1600,7 +1647,11 @@ static void render_your_hand(const coup_state_t* st)
     {
         char coin_str[8];
 #ifdef __SATURN__
-        if (coup_sprites_loaded()) {
+        /* Tiered coin stack rather than a single coin: the art has 1/2/3/5/10
+         * variants, so the pile visibly grows with the player's holdings. */
+        if (coup_fx_loaded()) {
+            coup_ui_draw_coins(self->coins, H->coin_sprite_x, H->coin_sprite_y);
+        } else if (coup_sprites_loaded()) {
             coup_sprites_draw(COUP_SPR_COIN, H->coin_sprite_x, H->coin_sprite_y);
         }
 #endif
@@ -1823,10 +1874,11 @@ void coup_render_screen(const coup_state_t* st)
             {
                 int scene;
                 switch (st->screen) {
-                case COUP_SCREEN_GAME:      scene = COUP_BG_SCENE_GAME;    break;
-                case COUP_SCREEN_LOBBY:     scene = COUP_BG_SCENE_LOBBY;   break;
-                case COUP_SCREEN_GAME_OVER: scene = COUP_BG_SCENE_VICTORY; break;
-                default:                    scene = COUP_BG_SCENE_TITLE;   break;
+                case COUP_SCREEN_GAME:  scene = COUP_BG_SCENE_GAME;  break;
+                case COUP_SCREEN_LOBBY: scene = COUP_BG_SCENE_LOBBY; break;
+                /* Game over keeps its own full-screen image, so it needs no
+                 * dedicated backdrop; everything else uses the title art. */
+                default:                scene = COUP_BG_SCENE_TITLE; break;
                 }
                 saturn_bg_set_scene(scene);
             }

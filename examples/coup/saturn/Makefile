@@ -68,6 +68,7 @@ SRCS = main_saturn.c
 SRCS += coup_sprite_loader.c
 SRCS += coup_gameover_loader.c
 SRCS += coup_anim_loader.c
+SRCS += coup_fx_loader.c
 
 # Shared coup sources (keep in sync with Makefile COUP_*_SRCS)
 SRCS += $(COUP_SHARED)/coup_game.c

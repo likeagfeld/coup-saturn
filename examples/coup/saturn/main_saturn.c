@@ -44,6 +44,9 @@
 /* Animated character sprites */
 #include "coup_anim_loader.h"
 
+/* Action effects and UI sprites */
+#include "coup_fx_loader.h"
+
 /*============================================================================
  * Configuration
  *============================================================================*/
@@ -243,6 +246,7 @@ void main(void)
     coup_sprites_load();
     coup_gameover_load();
     coup_anim_load();
+    coup_fx_load();
 
     /* ---- Transport setup ---- */
     saturn_transport.ctx = &uart;
