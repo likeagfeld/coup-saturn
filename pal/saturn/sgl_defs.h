@@ -627,4 +627,81 @@ extern Uint32 slDec2Hex(Uint32 bcd);
 #define slResetDisable()  slRequestCommand(SMPC_RESDIS, SMPC_NO_WAIT)
 #define slGetStatus()     slRequestCommand(SMPC_GETSTS, SMPC_NO_WAIT)
 
+/*============================================================================
+ * CD file system (SGL_CD.H)
+ *
+ * Declared here rather than by including SGL_CD.H. That header pulls in SGL.H
+ * and SL_DEF.H, which redefine everything this file already declares - the
+ * build fails with dozens of "nested redefinition of enum tvsz". This PAL
+ * deliberately builds against bare declarations of its own, so the CD API
+ * follows the same pattern. Every value below is cited to its header.
+ *
+ * LINKING: LIBCD.A needs slDMAXCopy and slDMAStatus from LIBSGL.A, and
+ * SetCDFunc, CSH_Purge and the DMA_Scu* helpers from SEGA_SYS.A - all of
+ * which are listed BEFORE it. The link line MUST wrap the libraries in
+ * -Wl,--start-group ... -Wl,--end-group or every one comes back undefined.
+ *============================================================================*/
+
+/* SGL_CD.H:12 - CDHN is StmGrpHn, an opaque pointer (SEGA_STM.H:250). */
+typedef void* CDHN;
+
+/* SGL_CD.H:17-21 */
+typedef struct {
+    Sint16 cn;      /* channel number     */
+    Sint16 sm;      /* submode            */
+    Sint16 ci;      /* coding information */
+} CDKEY;
+
+#define CDKEY_NONE  (-1)    /* SEGA_STM.H:74  STM_KEY_NONE */
+#define CDKEY_TERM  (-2)    /* SGL_CD.H:23 */
+
+/* SGL_CD.H:28-45 */
+typedef struct {
+    void*  addr;    /* destination, NULL = do not transfer */
+    Sint32 unit;    /* unit size of the transfer area      */
+    Sint32 size;    /* number of units                     */
+} CD_TRANS_COPY;
+
+typedef struct {
+    Sint32 (*func)(void* obj, Uint32* addr, Sint32 adinc, Sint32 nsct);
+    void*  obj;
+} CD_TRANS_FUNC;
+
+typedef struct {
+    Sint32 type;
+    union {
+        CD_TRANS_COPY copy;
+        CD_TRANS_FUNC func;
+    } trans;
+} CDBUF;
+
+/* SGL_CD.H:48-52  enum TRANS_TYPE */
+#define CDBUF_COPY   0
+#define CDBUF_FUNC   1
+#define CDBUF_TERM   2
+
+/* SGL_CD.H:55-59  enum TRANS_UNIT, values from SEGA_STM.H:65,68 */
+#define CDBUF_FORM1  2048
+#define CDBUF_BYTE   1
+
+/* SGL_CD.H:82-87  enum CDSTAT, values from SEGA_STM.H:54-57 */
+#define CDSTAT_COMPLETED  0x100
+#define CDSTAT_PAUSE      0x101
+#define CDSTAT_DOING      0x102
+#define CDSTAT_WAIT       0x103
+
+/* SGL_CD.H:110  SLCD_WORK_SIZE(nfile) = nfile * sizeof(GfsDirName).
+ * GfsDirName (SEGA_GFS.H:311-314) is CdcFile plus Sint8 fname[GFS_FNAME_LEN]:
+ * CdcFile (SEGA_CDC.H:328-335) is 4+4+1+1+1+1 = 12 bytes, and GFS_FNAME_LEN
+ * is 12 (SEGA_GFS.H:37), so 24 bytes. */
+#define SLCD_GFSDIRNAME_SIZE   24
+#define SLCD_WORK_SIZE(nfile)  ((nfile) * SLCD_GFSDIRNAME_SIZE)
+
+extern Sint32 slCdInit(Sint32 nfile, void* work);
+extern CDHN   slCdOpen(Sint8* pathname, CDKEY key[]);
+extern Sint32 slCdLoadFile(CDHN cdhn, CDBUF buf[]);
+extern Sint32 slCdGetStatus(CDHN cdhn, Sint32 ndata[]);
+extern Sint32 slCdAbort(CDHN cdhn);
+extern void   slCdEvent(void);
+
 #endif /* SGL_DEFS_H */

@@ -56,20 +56,32 @@ def gate_assets():
     need = [
         "examples/coup/saturn/coup_anim_sprite_data.h",
         "examples/coup/saturn/coup_anim_sprites.h",
-        "examples/coup/saturn/coup_bg_data.h",
+        "examples/coup/saturn/coup_bg_index.h",
         "examples/coup/saturn/coup_fx_data.h",
     ]
     for p in need:
         if not os.path.exists(p):
             fail("A", f"missing generated header {p}")
             return
-    src = open("examples/coup/saturn/coup_bg_data.h", encoding="utf-8",
+    src = open("examples/coup/saturn/coup_bg_index.h", encoding="utf-8",
                errors="replace").read()
     m = re.search(r"#define COUP_BG_SCENE_COUNT (\d+)", src)
     n = int(m.group(1)) if m else 0
     if n < 1:
         fail("A", "no background scenes defined")
-    info("A", f"{n} background scene(s)")
+
+    # Scenes are streamed, so a scene that is declared but whose file is not
+    # on the disc is a black screen at runtime with no build-time symptom.
+    names = re.findall(r'"(BG[A-Z0-9]*\.BIN)"', src)
+    cd_dir = "examples/coup/saturn/cd"
+    missing = [f for f in names if not os.path.isfile(os.path.join(cd_dir, f))]
+    if len(names) != n:
+        fail("A", f"{n} scenes declared but {len(names)} filenames listed")
+    if missing:
+        fail("A", f"scene file(s) not built: {', '.join(missing)}")
+    else:
+        info("A", f"{n} background scene(s), all {len(names)} streamed files "
+                  f"present")
 
     src = open("examples/coup/saturn/coup_fx_data.h", encoding="utf-8",
                errors="replace").read()

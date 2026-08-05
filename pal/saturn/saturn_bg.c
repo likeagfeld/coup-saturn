@@ -6,9 +6,19 @@
 
 #include "saturn_bg.h"
 
+#include "saturn_cd.h"
+
 #ifdef __SATURN__
 #include "sgl_defs.h"
-#include "coup_bg_data.h"
+#include "coup_bg_index.h"
+
+/* One scene at a time, staged here on its way from the disc to VRAM.
+ *
+ * This single buffer replaces what used to be one resident const table PER
+ * SCENE. Three scenes cost 215,040 bytes and left 1,032 bytes of slack, which
+ * is why the other four could not be added at any colour depth. The staging
+ * buffer costs 72,192 and serves all seven. */
+static uint8_t s_stage[COUP_BG_FILE_BYTES];
 #endif
 
 static bool s_armed = false;
@@ -36,13 +46,29 @@ int saturn_bg_current_scene(void)
 }
 
 #ifdef __SATURN__
-/** Copy one scene's pixels into VRAM and its palette into CRAM. */
-static void saturn_bg_upload(int scene)
+/**
+ * Stream one scene off the disc, then push it to VRAM and CRAM.
+ *
+ * The file is a 512-byte big-endian RGB555 palette followed by 224 rows of
+ * 320 8bpp pixels - see convert_backgrounds.py emit_binaries(). Big-endian so
+ * the palette can be read as uint16_t on this big-endian CPU with no swap.
+ *
+ * Returns false if the scene could not be read; the caller leaves whatever
+ * was already on screen rather than painting garbage.
+ */
+static bool saturn_bg_upload(int scene)
 {
     volatile uint8_t* vram = (volatile uint8_t*)SATURN_BG_VRAM;
-    const uint8_t* src = coup_bg_tables[scene];
-    const uint16_t* pal = coup_bg_palettes[scene];
+    const uint8_t* src;
+    const uint16_t* pal;
     uint32_t i, y, x;
+
+    if (saturn_cd_load(coup_bg_files[scene], s_stage,
+                       COUP_BG_FILE_BYTES) != 0) {
+        return false;
+    }
+    pal = (const uint16_t*)(const void*)s_stage;
+    src = s_stage + COUP_BG_PAL_BYTES;
 
     /* Scenes are stored as the visible window only (320x224), not the full
      * 512x256 plane, because 45% of that plane is never displayed. Expand row
@@ -68,6 +94,7 @@ static void saturn_bg_upload(int scene)
             (volatile uint16_t*)saturn_bg_cram_addr((int)i);
         *cram = pal[i];
     }
+    return true;
 }
 #endif
 
@@ -78,9 +105,11 @@ void saturn_bg_set_scene(int scene)
         return;
     }
     if (scene == s_scene) {
-        return;             /* already resident - skip the 128 KB copy */
+        return;             /* already resident - skip the disc read entirely */
     }
-    saturn_bg_upload(scene);
+    if (!saturn_bg_upload(scene)) {
+        return;             /* keep the previous scene rather than show garbage */
+    }
 #else
     if (scene < 0) {
         return;
@@ -92,11 +121,15 @@ void saturn_bg_set_scene(int scene)
 void saturn_bg_init(void)
 {
 #ifdef __SATURN__
+    /* The CD file system must be up before any scene can be read. */
+    saturn_cd_init();
+
     /* Scene 0 is the default backdrop. Referred to by index rather than by a
      * generated enum name so that adding or renaming scenes in
      * convert_backgrounds.py cannot break this call. */
-    saturn_bg_upload(0);
-    s_scene = 0;
+    if (saturn_bg_upload(0)) {
+        s_scene = 0;
+    }
 
     /* Arm the layer. Priority 3 sits under the sprites (6) and text (7). */
     slBitMapNbg1(COL_TYPE_256, BM_512x256, (void*)SATURN_BG_VRAM);

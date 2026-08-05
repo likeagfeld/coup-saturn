@@ -87,14 +87,29 @@ def parse_bytes(src, name):
     return bytes(int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]{2})", m.group(1)))
 
 
-def check_background(scene, src_png, hdr):
-    pal = parse_palette(hdr, f"coup_bg_pal_{scene}", 256)
-    data = parse_bytes(hdr, f"coup_bg_tbl_{scene}")
-    if pal is None or data is None:
-        FAILURES.append(f"background {scene}: could not parse from header")
+def check_background(scene, src_png, bin_path):
+    """Decode a streamed scene binary back to an image and score it.
+
+    Scenes are no longer linked into the binary, so this reads the .BIN that
+    actually ships on the disc: 512 bytes of big-endian RGB555 palette
+    followed by 224 rows of 320 8bpp pixels. Testing the shipped file rather
+    than a C array means the converter's packing is under test too.
+    """
+    w, h = 320, 224
+    pal_bytes, pix_bytes = 512, w * h
+
+    if not os.path.isfile(bin_path):
+        FAILURES.append(f"background {scene}: scene file missing at {bin_path}")
+        return
+    blob = open(bin_path, "rb").read()
+    if len(blob) != pal_bytes + pix_bytes:
+        FAILURES.append(f"background {scene}: {bin_path} is {len(blob)} B, "
+                        f"expected {pal_bytes + pix_bytes}")
         return
 
-    w, h = 320, 224
+    pal = [(blob[i * 2] << 8) | blob[i * 2 + 1] for i in range(256)]
+    data = blob[pal_bytes:]
+
     out = Image.new("RGB", (w, h))
     out.putdata([rgb555_to_rgb(pal[b]) for b in data[: w * h]])
 
@@ -169,7 +184,7 @@ def main():
     pack = ("examples/coup/assets/Official Art/coup_saturn_complete_asset_pack/"
             "coup_saturn_complete_asset_pack/saturn_ready")
 
-    hdr = open("examples/coup/saturn/coup_bg_data.h", encoding="utf-8",
+    hdr = open("examples/coup/saturn/coup_bg_index.h", encoding="utf-8",
                errors="replace").read()
     scenes = re.findall(r"COUP_BG_SCENE_(\w+) = \d+", hdr)
     # Sources come from the header's own provenance block, written by
@@ -177,6 +192,10 @@ def main():
     # the rules scene came to report 3.7 dB PSNR: it was being compared
     # against B7_rules.png when it had been built from rulesoverlay.png.
     src_map = dict(re.findall(r"COUP_BG_SOURCE\s+(\w+)\s*=\s*(.+)", hdr))
+    # Scene -> shipped .BIN, taken from the index in declaration order so the
+    # gate always tests the file the console actually opens.
+    bin_names = re.findall(r'"(BG[A-Z0-9]*\.BIN)"', hdr)
+    bin_for = {s.lower(): n for s, n in zip(scenes, bin_names)}
     assets_root = "examples/coup/assets"
 
     print("=== BACKGROUND FIDELITY (255 colours available) ===")
@@ -197,7 +216,9 @@ def main():
                             f"at {f}")
             print(f"  bg {s.lower():<10} NOT MEASURED - recorded source missing")
             continue
-        check_background(s.lower(), f, hdr)
+        binp = os.path.join("examples/coup/saturn/cd",
+                            bin_for.get(s.lower(), ""))
+        check_background(s.lower(), f, binp)
 
     print()
     print("=== PORTRAIT FIDELITY (15 colours available) ===")

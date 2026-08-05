@@ -32,7 +32,7 @@
 #include "saturn_fade.h"
 #include "saturn_vdp1.h"
 #include "saturn_vdp2.h"
-#include "coup_bg_data.h"   /* COUP_BG_SCENE_* */
+#include "coup_bg_index.h"  /* COUP_BG_SCENE_* */
 #endif
 
 /*============================================================================
