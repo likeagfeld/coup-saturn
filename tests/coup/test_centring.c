@@ -220,3 +220,24 @@ CUI_TEST(the_fade_arms_the_sprite_layer)
     CUI_ASSERT((fade_mask & NBG1ON) != 0);
     CUI_ASSERT_EQ(0x43, fade_mask);
 }
+
+CUI_TEST(colour_calculation_constants_match_sl_def_h)
+{
+    /* SL_DEF.H:584-588 and 603-606. An earlier hand-rolled block in
+     * sgl_defs.h defined CC_RATE as (1<<0) and CC_2ND as (1<<1); the real
+     * values are 0 and 0x200. Nothing used them, so nothing broke - but the
+     * moment the correct values were added the two collided, and only the
+     * host build's -Werror caught it. The Saturn build does not use -Werror
+     * and compiled the redefinition without complaint. */
+    CUI_ASSERT_EQ(0, CC_RATE);
+    CUI_ASSERT_EQ(0x100, CC_ADD);
+    CUI_ASSERT_EQ(0, CC_TOP);
+    CUI_ASSERT_EQ(0x200, CC_2ND);
+    CUI_ASSERT_EQ(0x400, CC_EXT);
+
+    /* The condition that makes the whole effect work: blend where the colour
+     * word's MSB is set. saturn_vdp1.c sets it on polygons (UI plates) and
+     * leaves it clear on textured sprites (glyphs, portraits, effects, cards),
+     * so this one value separates "blend" from "leave alone". */
+    CUI_ASSERT_EQ(3, CC_MSB);
+}

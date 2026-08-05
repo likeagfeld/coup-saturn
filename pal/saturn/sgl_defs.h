@@ -419,11 +419,11 @@ extern void slSpriteColMode(Uint16 mode);
 #define slColRateNbg0(rate)   slColRate(scnNBG0, rate)
 #define slColRateNbg1(rate)   slColRate(scnNBG1, rate)
 
-/* Color calculation constants */
-#define CC_RATE         (1 << 0)
-#define CC_2ND          (1 << 1)
-#define CC_NBG0         (1 << 4)
-#define CC_NBG1         (1 << 5)
+/* Colour calculation constants live in the VDP2 colour calculation section
+ * below, transcribed from SL_DEF.H. An earlier hand-rolled block here defined
+ * CC_RATE as (1<<0) and CC_2ND as (1<<1); SL_DEF.H:584-587 gives 0 and 0x200.
+ * Nothing used them, and the host build's -Werror caught the collision the
+ * moment the correct values were added. */
 
 /* Color RAM modes */
 #define CRAM_MODE_0     0   /* 1024 colors, RGB555 */
@@ -635,6 +635,53 @@ extern Uint32 slDec2Hex(Uint32 bcd);
 #define slResetEnable()   slRequestCommand(SMPC_RESENA, SMPC_NO_WAIT)
 #define slResetDisable()  slRequestCommand(SMPC_RESDIS, SMPC_NO_WAIT)
 #define slGetStatus()     slRequestCommand(SMPC_GETSTS, SMPC_NO_WAIT)
+
+/*============================================================================
+ * VDP2 colour calculation (SL_DEF.H)
+ *
+ * Lets the painted VDP2 backdrop show through the VDP1 UI plates instead of
+ * being buried by them. On rules, game and lobby the panels cover nearly the
+ * whole scene; settings, whose panels are small, shows what the art looks
+ * like when it is not hidden.
+ *
+ * THE DISCRIMINATION IS FREE. saturn_vdp1.c writes polygon colours as an RGB
+ * code with bit 15 SET (line 62, `rgb555 | 0x8000`) and textured sprites as a
+ * CRAM bank with bit 15 CLEAR (lines 180, 223). So the MSB already separates
+ * "UI plate" from "glyph, portrait, effect and card". Selecting CC_MSB as the
+ * colour-calculation condition blends exactly the plates and leaves every
+ * piece of artwork and every letter fully opaque. No sprite data changes.
+ *
+ * Ratios are a 32-step enum, top:second. CLRate16_16 is an even split.
+ *============================================================================*/
+
+/* SL_DEF.H:584-588  slColorCalc mode bits */
+#define CC_RATE         0
+#define CC_ADD          0x100
+#define CC_TOP          0
+#define CC_2ND          0x200
+#define CC_EXT          0x400
+
+/* SL_DEF.H:603-606  sprite colour-calculation condition */
+#define CC_pr_CN        0
+#define CC_PR_CN        1
+#define CC_PR_cn        2
+#define CC_MSB          3       /* calculate where the colour word's MSB is set */
+
+/* SL_DEF.H:612-643  enum color_rate, top:second. CLRate31_1 is 0. */
+#define CLRate26_6      5
+#define CLRate24_8      7
+#define CLRate20_12     11
+#define CLRate18_14     13
+#define CLRate16_16     15
+#define CLRate12_20     19
+#define CLRate8_24      23
+
+/* scnSPR0, slColorCalc, slColorCalcOn and slColRate are already declared
+ * above with the rest of the VDP2 scroll API; only the sprite-specific
+ * condition setter is new here. */
+extern void slSpriteCCalcCond(Uint16 cond);
+
+#define slColRateSpr0(rate)  slColRate(scnSPR0, rate)
 
 /*============================================================================
  * CD file system (SGL_CD.H)

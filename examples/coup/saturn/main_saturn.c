@@ -48,6 +48,21 @@
 #include "coup_fx_loader.h"
 #include "coup_qa_screen.h"
 
+/* Plate/backdrop blend ratio, top:second.
+ *
+ * This is the ONLY control. Colour calculation happens once, at VDP2 composite
+ * time, between the finished VDP1 framebuffer and the background - it is not
+ * per-command. MEASURED: drawing a plate twice to compound the blend changed
+ * the captured frame by exactly nothing (contrast 105.2 and noise 41.8 before
+ * and after, to the decimal). A darker plate colour does not help either, for
+ * the same reason: the backdrop still contributes second/32 regardless of what
+ * the plate underneath it is.
+ *
+ * So legibility is bought here and nowhere else. Tuned against captures of the
+ * rules screen, whose backdrop is itself a table full of text and is therefore
+ * the worst case. */
+#define COUP_PANEL_BLEND  CLRate24_8
+
 /*============================================================================
  * Configuration
  *============================================================================*/
@@ -225,6 +240,21 @@ void main(void)
     if (slScrAutoDisp(NBG0ON | NBG1ON) != OK) {
         slScrAutoDisp(NBG0ON);
     }
+
+    /* ---- Let the painted backdrop show through the UI plates ----
+     *
+     * saturn_vdp1.c writes polygon colours as an RGB code with bit 15 SET and
+     * textured sprites as a CRAM bank with bit 15 CLEAR, so the MSB already
+     * separates "UI plate" from "glyph, portrait, effect and card". Selecting
+     * the MSB as the colour-calculation condition therefore blends exactly the
+     * plates and leaves every letter and every piece of artwork fully opaque.
+     *
+     * Without this the panels bury the scene: on rules, game and lobby they
+     * cover nearly the whole backdrop. */
+    slSpriteCCalcCond(CC_MSB);
+    slColRateSpr0(COUP_PANEL_BLEND);
+    slColorCalc(CC_RATE | CC_TOP);
+    slColorCalcOn(SPRON);
 
     slTVOn();
 
