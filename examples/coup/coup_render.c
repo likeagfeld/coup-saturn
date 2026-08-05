@@ -422,8 +422,13 @@ static void coup_render_title(const coup_state_t* st)
     /* 1. Full-screen dark background */
     screen_bg(L->bg, COUP_BG_DARK);
 
-    /* 2. Title header panel (full width) */
+    /* 2. Title header panel (full width).
+     *    Suppressed on Saturn: a filled plate across the sky would bury the
+     *    skyline the backdrop art exists to show. The wordmark below is keyed,
+     *    so it needs no plate to read against. */
+#ifndef __SATURN__
     panel_r(L->header_panel, COUP_PANEL_HEADER);
+#endif
 
 #ifdef __SATURN__
     /* 3. Animated portrait sprites scrolling full-width right-to-left (2x scaled) */
@@ -475,22 +480,33 @@ static void coup_render_title(const coup_state_t* st)
     }
 #endif
 
+#ifdef __SATURN__
+    /* 4. The COUP wordmark.
+     *
+     * This sprite was once removed on the theory that the backdrop already
+     * contained a painted logo - a conclusion drawn from counting gold pixels
+     * in the title band. That count was the sunset. Measuring STRUCTURE rather
+     * than colour settles it: thresholded at the 90th percentile of
+     * brightness, the wordmark art yields five letter-sized blobs sharing a
+     * baseline (863/414/394/314/307 px), while the same band of B1_title.png
+     * yields a single 1,753 px mass with nothing else above 41 px. A skyline,
+     * not letterforms. The sprite is the only branding the screen has.
+     *
+     * Keyed on its dark backing, so no plate is drawn behind it. */
+    if (coup_fx_loaded()) {
+        coup_ui_draw(COUP_UI_WORDMARK, L->logo_pos.x, L->logo_pos.y);
+    }
+#endif
+
     /* === VDP2 LAYER: Text overlay === */
 
-#ifdef __SATURN__
-    /* Title logo sprite */
-    if (coup_sprites_loaded()) {
-        coup_sprites_draw(COUP_SPR_TITLE, L->logo_pos.x, L->logo_pos.y);
-    } else {
-#endif
-    /* ASCII-art fallback title */
+#ifndef __SATURN__
+    /* ASCII-art fallback title for platforms without the sprite. */
     draw_at(L->ascii_col, L->ascii_start_row,     " ####  ####  #  # ####", COUP_TEXT_YELLOW);
     draw_at(L->ascii_col, L->ascii_start_row + 1,  "#      #  #  #  # #  #", COUP_TEXT_YELLOW);
     draw_at(L->ascii_col, L->ascii_start_row + 2,  "#      #  #  #  # ####", COUP_TEXT_YELLOW);
     draw_at(L->ascii_col, L->ascii_start_row + 3,  "#      #  #  #  # #   ", COUP_TEXT_YELLOW);
     draw_at(L->ascii_col, L->ascii_start_row + 4,  " ####  ####  #### #   ", COUP_TEXT_YELLOW);
-#ifdef __SATURN__
-    }
 #endif
 
     /* Single centered "Play" button */

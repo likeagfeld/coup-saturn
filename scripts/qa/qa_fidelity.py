@@ -172,15 +172,32 @@ def main():
     hdr = open("examples/coup/saturn/coup_bg_data.h", encoding="utf-8",
                errors="replace").read()
     scenes = re.findall(r"COUP_BG_SCENE_(\w+) = \d+", hdr)
-    src_map = {"GAME": "B2_game_table.png", "TITLE": "B1_title.png",
-               "LOBBY": "B3_lobby.png", "VICTORY": "B5_victory.png",
-               "DEFEAT": "B6_defeat.png", "CONNECTING": "B4_connecting.png"}
+    # Sources come from the header's own provenance block, written by
+    # convert_backgrounds.py. Guessing them from a hardcoded name map is how
+    # the rules scene came to report 3.7 dB PSNR: it was being compared
+    # against B7_rules.png when it had been built from rulesoverlay.png.
+    src_map = dict(re.findall(r"COUP_BG_SOURCE\s+(\w+)\s*=\s*(.+)", hdr))
+    assets_root = "examples/coup/assets"
 
     print("=== BACKGROUND FIDELITY (255 colours available) ===")
+    if not src_map:
+        print("  no COUP_BG_SOURCE provenance in the header - regenerate it "
+              "with convert_backgrounds.py")
+        FAILURES.append("background provenance missing; fidelity unverifiable")
     for s in scenes:
-        f = os.path.join(pack, "backgrounds", src_map.get(s, ""))
-        if os.path.exists(f):
-            check_background(s.lower(), f, hdr)
+        rel = src_map.get(s.lower())
+        if not rel:
+            FAILURES.append(f"background {s.lower()}: no source recorded; "
+                            "fidelity was never measured for this scene")
+            print(f"  bg {s.lower():<10} NOT MEASURED - no source recorded")
+            continue
+        f = os.path.join(assets_root, rel.strip())
+        if not os.path.isfile(f):
+            FAILURES.append(f"background {s.lower()}: recorded source missing "
+                            f"at {f}")
+            print(f"  bg {s.lower():<10} NOT MEASURED - recorded source missing")
+            continue
+        check_background(s.lower(), f, hdr)
 
     print()
     print("=== PORTRAIT FIDELITY (15 colours available) ===")

@@ -44,14 +44,66 @@ def is_key(px):
     return r >= KEY_R_MIN and g <= KEY_G_MAX and b >= KEY_B_MIN
 
 
-def quantize_sequence(frames, name):
-    """Shared palette across a sequence; magenta becomes index 0."""
+# The logo art is the one asset NOT delivered on magenta - it sits on a dark
+# backing (MEASURED: L1_wordmark.png is 256x64, 15 colours, no alpha channel).
+# A plain "dark pixels are transparent" threshold is wrong here: it also erases
+# the dark interior of the emblem and the letters' own shading. Keying only the
+# dark region REACHABLE FROM THE BORDER removes the backing and leaves enclosed
+# darks alone (MEASURED at T=56: 277 interior pixels survive that a global
+# threshold destroys).
+#
+# T=56 is not a taste call. Sweeping the threshold, the keyed fraction is flat
+# between 56 and 64 (63.0% at both) - a plateau means the cut falls in a gap in
+# the colour distribution rather than through a cluster.
+LOGO_DARK_MAX = 56
+
+
+def dark_border_mask(im, thresh=LOGO_DARK_MAX):
+    """Keep-mask: False only for dark pixels connected to the image border."""
+    from collections import deque
+
+    w, h = im.size
+    px = im.load()
+    keyed = bytearray(w * h)
+    q = deque()
+
+    def seed(x, y):
+        if not keyed[y * w + x] and max(px[x, y][:3]) <= thresh:
+            keyed[y * w + x] = 1
+            q.append((x, y))
+
+    for x in range(w):
+        seed(x, 0)
+        seed(x, h - 1)
+    for y in range(h):
+        seed(0, y)
+        seed(w - 1, y)
+
+    while q:
+        cx, cy = q.popleft()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = cx + dx, cy + dy
+            if 0 <= nx < w and 0 <= ny < h:
+                seed(nx, ny)
+
+    return [not k for k in keyed]
+
+
+def quantize_sequence(frames, name, mask_fn=None):
+    """Shared palette across a sequence; the keyed colour becomes index 0.
+
+    mask_fn(image) -> list of bool (True = keep). Defaults to the magenta key.
+    """
     w, h = frames[0].size
     opaque = []
     masks = []
     for im in frames:
-        px = list(im.convert("RGB").getdata())
-        m = [not is_key(p) for p in px]
+        rgb = im.convert("RGB")
+        px = list(rgb.getdata())
+        if mask_fn is None:
+            m = [not is_key(p) for p in px]
+        else:
+            m = mask_fn(rgb)
         masks.append(m)
         opaque.extend(p for p, keep in zip(px, m) if keep)
 
@@ -222,6 +274,20 @@ def main():
         total += len(blobs[0])
         print(f"  ui {name:12}  1 frame  {w:3}x{h:<3} "
               f"{keyed*100:4.1f}% keyed  {len(blobs[0]):>6,} B")
+
+    # The logo, keyed on its dark backing rather than magenta. It lives in
+    # logo/ rather than ui/ in the pack, so it is handled explicitly.
+    logo = os.path.join(args.pack_dir, "logo", "L1_wordmark.png")
+    if os.path.exists(logo):
+        im = Image.open(logo).convert("RGB")
+        idx, pal, w, h = quantize_sequence([im], "wordmark",
+                                           mask_fn=dark_border_mask)
+        keyed = verify(idx, pal, w, h, "wordmark")
+        blobs = [pack_4bpp(idx[0], w, h)]
+        singles.append(("wordmark", blobs, pal, w, h))
+        total += len(blobs[0])
+        print(f"  ui {'wordmark':12}  1 frame  {w:3}x{h:<3} "
+              f"{keyed*100:4.1f}% keyed  {len(blobs[0]):>6,} B  (dark key)")
 
     path = emit(sequences, singles, args.out)
     print(f"-> {path}")

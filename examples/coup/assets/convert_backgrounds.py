@@ -97,7 +97,13 @@ def verify(bitmap, palette):
 def emit_header(scenes, out_path):
     """Emit one header holding every scene, plus a lookup table.
 
-    `scenes` is a list of (name, bitmap, palette) in enum order.
+    `scenes` is a list of (name, bitmap, palette, source_path) in enum order.
+
+    The source path of every scene is recorded in the header. Without it a
+    fidelity gate has to GUESS which artwork a scene came from, and a wrong
+    guess reads as a catastrophic conversion failure: comparing the rules
+    scene against B7_rules.png (it was actually built from rulesoverlay.png)
+    reported 3.7 dB PSNR for a conversion that was fine.
     """
     guard = "COUP_BG_DATA_H"
     with open(out_path, "w") as f:
@@ -115,11 +121,21 @@ def emit_header(scenes, out_path):
         f.write(f"#define COUP_BG_SCENE_COUNT {len(scenes)}\n\n")
 
         f.write("enum {\n")
-        for i, (name, _, _) in enumerate(scenes):
+        for i, (name, _, _, _) in enumerate(scenes):
             f.write(f"    COUP_BG_SCENE_{name.upper()} = {i},\n")
         f.write("};\n\n")
 
-        for name, bitmap, palette in scenes:
+        # Machine-readable provenance. scripts/qa/qa_fidelity.py reads these so
+        # it never has to guess which artwork a scene came from. A wrong guess
+        # reads as a catastrophic conversion failure: the rules scene measured
+        # 3.7 dB PSNR against B7_rules.png when it was built from
+        # rulesoverlay.png, and the conversion was fine all along.
+        f.write("/* Source artwork, for the fidelity gate. Do not edit.\n")
+        for name, _, _, src in scenes:
+            f.write(f"   COUP_BG_SOURCE {name} = {src.replace(chr(92), '/')}\n")
+        f.write("*/\n\n")
+
+        for name, bitmap, palette, _src in scenes:
             f.write(f"/* --- {name} --- */\n")
             f.write("/* Saturn RGB555. Index 0 is transparent and unused. */\n")
             f.write(f"static const uint16_t coup_bg_pal_{name}[256] = {{\n")
@@ -135,12 +151,12 @@ def emit_header(scenes, out_path):
             f.write("};\n\n")
 
         f.write("static const uint8_t* const coup_bg_tables[COUP_BG_SCENE_COUNT] = {\n")
-        for name, _, _ in scenes:
+        for name, _, _, _ in scenes:
             f.write(f"    coup_bg_tbl_{name},\n")
         f.write("};\n\n")
 
         f.write("static const uint16_t* const coup_bg_palettes[COUP_BG_SCENE_COUNT] = {\n")
-        for name, _, _ in scenes:
+        for name, _, _, _ in scenes:
             f.write(f"    coup_bg_pal_{name},\n")
         f.write("};\n\n")
 
@@ -164,7 +180,7 @@ def main():
 
         bitmap, palette, preview = convert(path)
         stats = verify(bitmap, palette)
-        scenes.append((name, bitmap, palette))
+        scenes.append((name, bitmap, palette, path))
 
         if args.preview_dir:
             os.makedirs(args.preview_dir, exist_ok=True)

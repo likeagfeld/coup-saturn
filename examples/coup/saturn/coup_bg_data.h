@@ -20,6 +20,12 @@ enum {
     COUP_BG_SCENE_RULES = 2,
 };
 
+/* Source artwork, for the fidelity gate. Do not edit.
+   COUP_BG_SOURCE game = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/backgrounds/B2_game_table.png
+   COUP_BG_SOURCE title = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/backgrounds/B1_title.png
+   COUP_BG_SOURCE rules = Official Art/rulesoverlay.png
+*/
+
 /* --- game --- */
 /* Saturn RGB555. Index 0 is transparent and unused. */
 static const uint16_t coup_bg_pal_game[256] = {

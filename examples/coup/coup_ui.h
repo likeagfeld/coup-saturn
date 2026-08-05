@@ -518,7 +518,10 @@ static const coup_ui_t __attribute__((unused)) COUP_UI = {
     .title = {
         .bg             = COUP_FULLSCREEN_BG,
         .header_panel   = {8, 8, COUP_SCREEN_W - 16, 56},
-        .logo_pos       = {32, 12},
+        /* Wordmark is 256x64. x = (320-256)/2 = 32 centres it; y = (68-64)/2 = 2
+         * centres it in the band above the portrait parade, which starts at 68.
+         * The old y of 12 ran to 76 and would have collided with the parade. */
+        .logo_pos       = {32, 2},
         .ascii_col      = 4,
         .ascii_start_row = 2,
         .menu_y         = 172,
