@@ -28,14 +28,31 @@ WHY IT IS NOT A PIXEL MEASUREMENT
   placement RULE is enforced statically, and the screens that can be captured
   are additionally checked on real pixels.
 
+STRICT MODE IS A RATCHET, NOT A TARGET
+  Demanding zero literal placements would be wrong and could never pass. A
+  left-aligned list is SUPPOSED to be literal: the rules screen has 83
+  left-aligned body lines, and the lobby's seat rows are a list. Converting
+  those to centred would be a defect, not a fix.
+
+  So --strict compares each screen against a recorded baseline and fails only
+  when a screen gains literals. Reviewed placements stay put; new unmeasured
+  ones cannot slip in. Lower a baseline number when you convert something -
+  never raise one.
+
 USAGE
-  python scripts/qa/qa_centring.py            # audit
-  python scripts/qa/qa_centring.py --strict   # fail on any literal-on-plate
+  python scripts/qa/qa_centring.py               # audit
+  python scripts/qa/qa_centring.py --strict      # fail if any screen regresses
+  python scripts/qa/qa_centring.py --write-baseline
 """
 
 import argparse
+import json
+import os
 import re
 import sys
+
+BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "centring_baseline.json")
 
 SRC = "examples/coup/coup_render.c"
 
@@ -114,6 +131,7 @@ def find_fake_centred(src):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--strict", action="store_true")
+    ap.add_argument("--write-baseline", action="store_true")
     ap.add_argument("--file", default=SRC,
                     help="source to audit (use a git-extracted copy to prove "
                          "the gate fires RED on known-bad input)")
@@ -160,23 +178,60 @@ def main():
               "which measures the string.")
         return 1
 
-    if not plate_screens:
-        print("GATE CENTRING: GREEN - no screen draws a literal-positioned "
-              "label on a plate, and no label is centred by padding")
+    counts = {n: l for n, l, _ in
+              [(n, sum(1 for r in audit(b, ln) if r[1] == "literal"),
+                None) for n, b, ln in screens(src)]}
+
+    if args.write_baseline:
+        with open(BASELINE, "w", encoding="utf-8") as fh:
+            json.dump(counts, fh, indent=2, sort_keys=True)
+            fh.write("\n")
+        print(f"wrote {BASELINE}")
         return 0
 
-    print("Screens where a plate frames a literally-positioned label. A plate "
-          "exists to frame its label, so the two must stay concentric:")
-    for name, plates, l in plate_screens:
-        print(f"  - {name:<12} {plates:>2} plate(s), {l:>2} literal label(s)")
-    print()
-    if args.strict:
-        print(f"GATE CENTRING: RED - {len(plate_screens)} screen(s) place a "
-              "label on a plate by literal position")
+    if not args.strict:
+        print("GATE CENTRING: AUDIT - no label is centred by padding. Run "
+              "--strict to hold each screen against its baseline.")
+        return 0
+
+    if not os.path.exists(BASELINE):
+        print(f"GATE CENTRING: RED - no baseline at {BASELINE}; run "
+              "--write-baseline once the current state is reviewed")
         return 1
-    print(f"GATE CENTRING: AUDIT - no label is centred by padding; "
-          f"{len(plate_screens)} screen(s) still position labels literally. "
-          "Run with --strict once they are converted to keep them that way.")
+    base = json.load(open(BASELINE, encoding="utf-8"))
+
+    regressions = []
+    improvements = []
+    for name, n in sorted(counts.items()):
+        b = base.get(name)
+        if b is None:
+            regressions.append(f"{name}: new screen with {n} literal "
+                               "placement(s) and no baseline")
+        elif n > b:
+            regressions.append(f"{name}: {n} literal placements, baseline {b} "
+                               f"(+{n - b})")
+        elif n < b:
+            improvements.append(f"{name}: {n}, was {b} (-{b - n})")
+
+    for line in improvements:
+        print(f"  improved: {line}")
+    print()
+    if regressions:
+        print("GATE CENTRING: RED - screen(s) gained unmeasured label "
+              "placements")
+        for r in regressions:
+            print("  - " + r)
+        print()
+        print("  If the new placement is a left-aligned list item, it is fine "
+              "- lower nothing, just re-run --write-baseline after review.")
+        return 1
+    if improvements:
+        print("GATE CENTRING: GREEN - no padding, no screen regressed, and "
+              f"{len(improvements)} screen(s) improved. Re-run "
+              "--write-baseline to lock the gains in.")
+        return 0
+    print("GATE CENTRING: GREEN - no label is centred by padding and no "
+          "screen has gained an unmeasured placement")
     return 0
 
 

@@ -1220,7 +1220,10 @@ static void coup_render_lobby(const coup_state_t* st)
         {
             cui_rect_t hdr = {44, 44, 232, 20};
             panel_r(hdr, COUP_PANEL_HEADER);
-            CUI_DISPLAY()->draw_text_sprite(80, 50, "ENTER YOUR NAME", COUP_TEXT_YELLOW);
+            /* Was drawn at a literal x of 80: 15 characters, 120 px, centring
+             * on 140 when the header panel centres on 160. */
+            draw_centered_in(hdr.x, hdr.w, 50, "ENTER YOUR NAME",
+                             COUP_TEXT_YELLOW);
         }
 
         /* Name input area */
@@ -1285,7 +1288,10 @@ static void coup_render_lobby(const coup_state_t* st)
             panel(44, 116, 232, 2, COUP_ACCENT_DIM);
             CUI_DISPLAY()->draw_text_sprite(56, 124, "UP/DOWN: Change Letter", COUP_TEXT_GRAY);
             CUI_DISPLAY()->draw_text_sprite(56, 134, "LEFT/RIGHT: Move Cursor", COUP_TEXT_GRAY);
-            CUI_DISPLAY()->draw_text_sprite(56, 152, " [A] Submit   [B] Delete", COUP_TEXT_WHITE);
+            /* The leading space put this one character right of the two
+             * lines above it, which start at 56. */
+            CUI_DISPLAY()->draw_text_sprite(56, 152, "[A] Submit   [B] Delete",
+                                            COUP_TEXT_WHITE);
         }
     }
 }
