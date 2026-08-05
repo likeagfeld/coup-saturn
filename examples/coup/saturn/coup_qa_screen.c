@@ -8,8 +8,27 @@
 #ifdef COUP_QA_SCREEN
 
 #include "coup.h"
+#include "saturn_bg.h"
+#include "saturn_cd.h"
+#include "coup_bg_index.h"
 
 #include <string.h>
+
+/*
+ * COUP_QA_SCREEN >= 100 selects the CD STRESS mode instead of a screen.
+ *
+ * The question it answers: does slCdAbort() actually release the file handle
+ * after a successful load, or does the handle leak? slCdInit() is given a
+ * fixed open-file budget, so a leak shows up as slCdOpen() failing after N
+ * loads - and N could easily be larger than a short play session, which is
+ * exactly how a bug like this reaches a player and never a tester.
+ *
+ * This cycles every scene repeatedly at boot and leaves the outcome in
+ * g_saturn_cd_stats for qa_cd_stress.py to read over READ_CORE_RAM. A leak
+ * appears as last_result going non-zero with loads stuck below the target.
+ */
+#define QA_STRESS_BASE  100
+#define QA_STRESS_LOADS 64
 
 /* coup_get_state() hands out a const pointer because nothing in the game has
  * any business writing the state from outside coup_game.c. This is the one
@@ -38,10 +57,34 @@ static void qa_seat(coup_state_t* st, int i, const char* name, int coins,
     p->difficulty = 1;
 }
 
+/** Cycle every scene off the disc, many times, and leave the stats behind. */
+static void qa_cd_stress(int target_loads)
+{
+    int n = 0;
+    int scene = 0;
+
+    while (n < target_loads) {
+        /* Step through every scene so each load is a genuine read with a
+         * seek, not the no-op that saturn_bg_set_scene() does when the
+         * requested scene is already resident. */
+        scene = (scene + 1) % COUP_BG_SCENE_COUNT;
+        saturn_bg_set_scene(scene);
+        if (saturn_cd_stats()->last_result != 0) {
+            return;         /* leave the failure in place for the gate */
+        }
+        n++;
+    }
+}
+
 void coup_qa_force_screen(void)
 {
     coup_state_t* st = qa_state();
     int i;
+
+    if (COUP_QA_SCREEN >= QA_STRESS_BASE) {
+        qa_cd_stress(QA_STRESS_LOADS);
+        return;
+    }
 
     /* A full table, so seats, names, coin counts and card backs all render. */
     st->player_count = 4;
