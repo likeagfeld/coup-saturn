@@ -198,3 +198,65 @@ parses it.
 Two gates were themselves defective and were fixed rather than trusted:
 `qa_fidelity` guessed each scene's source art (the converter now records it in
 the header), and `qa_retroarch` matched only one of the core's two names.
+
+---
+
+## 9. Backgrounds: why CD streaming, not 4bpp (MEASURED 2026-08-05)
+
+The user approved either. The arithmetic decides it, and 4bpp loses.
+
+```
+real slack available          1,032 B   (197,344 headroom - 181,312 hang - 15,000 margin)
+one background  8bpp         71,680 B   (320x224 visible window)
+one background  4bpp         35,840 B
+3 scenes resident today     215,040 B
+
+A  add 4 missing scenes at 4bpp   needs 143,360 B   short by 142,328 B
+B  convert ALL 7 scenes to 4bpp   needs  35,840 B   short by  34,808 B
+C  stream, one scene resident     FREES 143,360 B   all 7 scenes at 8bpp
+D  stream chunked into VRAM       FREES 206,848 B   all 7 scenes at 8bpp
+```
+
+4bpp cannot deliver the missing scenes no matter how good it looks - even
+converting every scene to 16 colours still overruns the slack by 34,808 B. So
+the quality question never arises. Streaming is strictly better on all three
+axes: more scenes, full 8bpp quality, and it hands back ~200 KB of WRAM.
+
+### Viability, verified by link probe
+
+The SGL CD API (`SGL_CD.H`: `slCdInit`, `slCdOpen`, `slCdLoadFile`,
+`slCdTrans`, `slCdGetStatus`) is present in `LIBCD.A` and **links clean**.
+
+It first appeared unusable - `SetCDFunc`, `DMA_ScuSetPrm`, `DMA_ScuStart`,
+`DMA_ScuGetStatus`, `CSH_Purge`, `slDMAXCopy`, `slDMAStatus` all came back
+undefined. That was link ORDER, not absence: `LIBCD.A` is listed after
+`LIBSGL.A`, so the SGL objects it needs had already been passed. Wrapping the
+libraries in `-Wl,--start-group ... -Wl,--end-group` resolves every one.
+
+**The Makefile link line must use a link group.** Without it the CD objects
+fail to resolve and the obvious-but-wrong conclusion is that SGL 3.02j has no
+CD support.
+
+GFS (`SEGA_GFS.H`) is declared and `GFS_TRN.O` is in `LIBCD.A`, but the SGL CD
+API is the supported surface here and is sufficient.
+
+### Timing budget
+
+The binding constraint is the server, which must stay turnkey (D9). Measured
+from `tools/coup_server/server.py`:
+
+```
+CHALLENGE_TIMEOUT / BLOCK_TIMEOUT   12.0 s   <-- tightest
+INFLUENCE / EXCHANGE_TIMEOUT        30.0 s
+TURN_TIMEOUT                        60.0 s
+HEARTBEAT_TIMEOUT                   60.0 s
+```
+
+A scene load must never stall the client into any of those windows. Two things
+make that comfortable: 71,680 B at Saturn 2x (~300 KB/s) is ~0.24 s plus seek,
+and scene changes happen at phase boundaries, not inside a challenge window.
+TCP buffers during a stall, so a brief block costs latency, not messages.
+
+**Budget: a scene load must complete in under 1.0 s, measured on the real
+build.** That is the "fast enough" bar. It is to be measured via a timer
+written to WRAM and read live over `READ_CORE_RAM`, not estimated.
