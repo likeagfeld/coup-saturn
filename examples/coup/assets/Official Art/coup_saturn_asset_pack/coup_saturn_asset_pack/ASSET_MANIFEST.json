@@ -1,0 +1,15 @@
+{
+  "backgrounds": 7,
+  "portrait_frames": 40,
+  "cards": 6,
+  "ui_sprites": 12,
+  "effect_frames": 60,
+  "logos_splashes": 2,
+  "notes": [
+    "All backgrounds are 1280x896 RGB PNG and quantized to 255 colours.",
+    "All portrait frames are 512x768 RGB PNG and quantized to 15 colours.",
+    "All keyed sprites use exact #FF00FF backing and a 16-entry total palette.",
+    "Portrait animation is intentionally micro-motion/light drift derived from the supplied card art.",
+    "B4, B6 and B7 are style-matched variants derived from the supplied background references."
+  ]
+}

@@ -29,6 +29,7 @@ Usage:
 """
 
 import argparse
+import glob
 import os
 import sys
 
@@ -144,18 +145,50 @@ def verify(per_frame, palette, name):
     assert SPRITE_W % 8 == 0, "VDP1 sprite width must be a multiple of 8"
 
 
+def load_pack_frames(pack_dir, name, frames):
+    """Load pre-rendered animation frames from the delivered asset pack.
+
+    The pack ships real per-frame animation authored at the display size, which
+    is strictly better than the synthesised Ken Burns drift: it has actual
+    motion - breathing, blinks, cloth drift - rather than a pan across a still.
+    Frames are already 64x96, so no resampling happens here and no detail is
+    lost a second time.
+    """
+    found = sorted(glob.glob(os.path.join(pack_dir, name, "*.png")))
+    if not found:
+        raise SystemExit(f"convert_portraits: no frames for {name} in {pack_dir}")
+
+    out = []
+    for path in found[:frames]:
+        im = Image.open(path).convert("RGB")
+        if im.size != (SPRITE_W, SPRITE_H):
+            im = im.resize((SPRITE_W, SPRITE_H), Image.LANCZOS)
+        out.append(im)
+
+    # Loop back through the supplied frames if fewer were delivered than asked.
+    while len(out) < frames:
+        out.append(out[len(out) % len(found)].copy())
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--frames", type=int, default=FRAME_COUNT)
     ap.add_argument("--preview-dir")
     ap.add_argument("--src", default="card_src")
+    ap.add_argument("--pack-dir",
+                    help="directory of pre-rendered frames, one subdir per "
+                         "character; overrides the synthesised drift")
     ap.add_argument("--out", default="../saturn")
     args = ap.parse_args()
 
     all_data, all_pal = {}, {}
     for name in CHARACTERS:
-        frames = build_frames(os.path.join(args.src, f"{name}.png"),
-                              args.frames, ZOOM_MAX)
+        if args.pack_dir:
+            frames = load_pack_frames(args.pack_dir, name, args.frames)
+        else:
+            frames = build_frames(os.path.join(args.src, f"{name}.png"),
+                                  args.frames, ZOOM_MAX)
         per_frame, palette = quantize_shared(frames, MAX_COLORS)
         verify(per_frame, palette, name)
         all_data[name] = [pack_4bpp(p) for p in per_frame]

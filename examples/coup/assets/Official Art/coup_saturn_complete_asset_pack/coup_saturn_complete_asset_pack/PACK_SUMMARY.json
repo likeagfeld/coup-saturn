@@ -1,0 +1,23 @@
+{
+  "primary_unique_assets": {
+    "backgrounds": 7,
+    "portrait_frames": 40,
+    "cards": 6,
+    "ui_sprites": 12,
+    "effect_frames": 60,
+    "logo_and_splash": 2,
+    "total": 127
+  },
+  "production_variants_per_primary_asset": 3,
+  "production_png_files": 381,
+  "animation_preview_gifs": 13,
+  "sequence_sheets": 13,
+  "included_source_atlases_and_references": 17,
+  "qa_failures": 0,
+  "directory_tiers": {
+    "source_fullcolor": "4x authoring dimensions specified by the MD",
+    "target_fullcolor": "native 320x224 / sprite target dimensions",
+    "saturn_ready": "native target dimensions with palette limits applied"
+  },
+  "important_note": "The attached MD defines 127 unique production assets/frames. This package contains those 127 in three production tiers, plus sheets, GIF previews, source atlases, references, and QA manifests, resulting in well over 400 files."
+}
