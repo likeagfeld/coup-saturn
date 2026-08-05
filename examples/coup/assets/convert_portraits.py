@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""
+convert_portraits.py - Build animated Saturn portraits from the official cards.
+
+Replaces the previous animation, which was generated from MP4s that are not in
+the repo and whose source art faded to black at the bottom. That fade is
+border-connected, so no transparency heuristic could separate it from the
+background: 56-74% of every sprite was punched out (MEASURED), the characters
+lost their torsos over the painted backdrop, and a medallion had to be drawn
+behind each one to hide it.
+
+The official card illustrations are fully opaque busts on their own painted
+backgrounds, which removes the problem by construction rather than by masking.
+
+Motion comes from a slow ping-pong zoom across the still illustration - a Ken
+Burns drift. It is genuine per-frame motion, it loops seamlessly because the
+ramp reverses, and it needs no source video.
+
+VDP1 constraints honoured (ST-013-R3):
+  - 4bpp packed, two pixels per byte, high nybble is the left pixel
+  - colour index 0 is TRANSPARENT for a sprite, so it is reserved and unused;
+    the art occupies indices 1-15
+  - width must be a multiple of 8
+  - one shared 16-colour palette per character across all frames, so a frame
+    change never needs a CRAM upload
+
+Usage:
+  python convert_portraits.py [--frames 24] [--preview-dir DIR]
+"""
+
+import argparse
+import os
+import sys
+
+from PIL import Image
+
+CHARACTERS = ["duke", "assassin", "captain", "ambassador", "contessa"]
+
+SPRITE_W = 32
+SPRITE_H = 48
+FRAME_COUNT = 24
+MAX_COLORS = 15          # index 0 stays transparent and unused
+
+# Bust window inside the card, as fractions: inside the coloured border and
+# above the name plate.
+CROP = (0.06, 0.05, 0.94, 0.62)
+
+# Ping-pong zoom depth. Small on purpose - at 32x48 a large zoom reads as
+# juddering rather than drift.
+ZOOM_MAX = 0.07
+
+
+def rgb_to_saturn555(r, g, b):
+    """Pack 8-bit RGB into Saturn RGB555: 0BBBBBGGGGGRRRRR."""
+    return ((b >> 3) << 10) | ((g >> 3) << 5) | (r >> 3)
+
+
+def build_frames(card_path, frames, zoom_max):
+    """Crop the bust and render `frames` of ping-pong zoom."""
+    card = Image.open(card_path).convert("RGB")
+    w, h = card.size
+    box = (int(w * CROP[0]), int(h * CROP[1]),
+           int(w * CROP[2]), int(h * CROP[3]))
+    bust = card.crop(box)
+    bw, bh = bust.size
+
+    out = []
+    for i in range(frames):
+        # Triangle wave 0..1..0 so frame N-1 leads back into frame 0.
+        t = i / (frames / 2.0)
+        if t > 1.0:
+            t = 2.0 - t
+        z = 1.0 - zoom_max * t
+
+        cw, ch = int(bw * z), int(bh * z)
+        ox, oy = (bw - cw) // 2, int((bh - ch) * 0.35)   # bias toward the face
+        out.append(bust.crop((ox, oy, ox + cw, oy + ch))
+                       .resize((SPRITE_W, SPRITE_H), Image.LANCZOS))
+    return out
+
+
+def quantize_shared(frames, max_colors):
+    """One palette for every frame of a character.
+
+    Deliberately does NOT treat dark pixels as transparent. These portraits are
+    opaque by design; masking near-black is exactly what destroyed the previous
+    sprites.
+    """
+    strip = Image.new("RGB", (SPRITE_W * len(frames), SPRITE_H))
+    for i, f in enumerate(frames):
+        strip.paste(f, (i * SPRITE_W, 0))
+
+    q = strip.quantize(colors=max_colors, method=Image.MEDIANCUT,
+                       dither=Image.Dither.FLOYDSTEINBERG)
+    flat = q.getpalette()[: max_colors * 3]
+    idx = q.tobytes()
+
+    # Shift every index up by one so 0 stays reserved for transparency.
+    palette = [(0, 0, 0)]
+    for i in range(max_colors):
+        palette.append((flat[i * 3], flat[i * 3 + 1], flat[i * 3 + 2]))
+    while len(palette) < 16:
+        palette.append((0, 0, 0))
+
+    per_frame = []
+    sw = SPRITE_W * len(frames)
+    for n in range(len(frames)):
+        px = []
+        for y in range(SPRITE_H):
+            row = y * sw + n * SPRITE_W
+            px.extend(idx[row: row + SPRITE_W])
+        per_frame.append([p + 1 for p in px])
+    return per_frame, palette
+
+
+def pack_4bpp(indices):
+    """Two pixels per byte, high nybble is the left pixel."""
+    data = bytearray()
+    for y in range(SPRITE_H):
+        for x in range(0, SPRITE_W, 2):
+            i = y * SPRITE_W + x
+            data.append(((indices[i] & 0xF) << 4) | (indices[i + 1] & 0xF))
+    return bytes(data)
+
+
+def verify(per_frame, palette, name):
+    """Assert the hardware invariants before anything is written."""
+    assert palette[0] == (0, 0, 0), f"{name}: index 0 must stay reserved"
+    for n, px in enumerate(per_frame):
+        assert len(px) == SPRITE_W * SPRITE_H, f"{name} f{n}: wrong pixel count"
+        assert 0 not in px, (
+            f"{name} f{n}: uses the transparent index - the backdrop would "
+            "show through the character")
+        assert max(px) <= 15, f"{name} f{n}: index out of 4bpp range"
+    assert SPRITE_W % 8 == 0, "VDP1 sprite width must be a multiple of 8"
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--frames", type=int, default=FRAME_COUNT)
+    ap.add_argument("--preview-dir")
+    ap.add_argument("--src", default="card_src")
+    ap.add_argument("--out", default="../saturn")
+    args = ap.parse_args()
+
+    all_data, all_pal = {}, {}
+    for name in CHARACTERS:
+        frames = build_frames(os.path.join(args.src, f"{name}.png"),
+                              args.frames, ZOOM_MAX)
+        per_frame, palette = quantize_shared(frames, MAX_COLORS)
+        verify(per_frame, palette, name)
+        all_data[name] = [pack_4bpp(p) for p in per_frame]
+        all_pal[name] = palette
+
+        used = len(set(i for p in per_frame for i in p))
+        print(f"  {name:11} {args.frames} frames, {used:2}/{MAX_COLORS} colours, "
+              f"{len(all_data[name][0])} bytes/frame")
+
+        if args.preview_dir:
+            os.makedirs(args.preview_dir, exist_ok=True)
+            frames[0].resize((SPRITE_W * 4, SPRITE_H * 4), Image.NEAREST).save(
+                os.path.join(args.preview_dir, f"portrait-{name}.png"))
+
+    fsize = len(all_data[CHARACTERS[0]][0])
+
+    data_path = os.path.join(args.out, "coup_anim_sprite_data.h")
+    with open(data_path, "w") as f:
+        f.write("/* Generated by convert_portraits.py from the official card "
+                "art. Do not edit. */\n")
+        f.write("#ifndef COUP_ANIM_SPRITE_DATA_H\n"
+                "#define COUP_ANIM_SPRITE_DATA_H\n\n#include <stdint.h>\n\n")
+        for name in CHARACTERS:
+            for n, blob in enumerate(all_data[name]):
+                f.write(f"static const uint8_t coup_animdata_{name}_f{n:02d}"
+                        f"[{fsize}] = {{\n")
+                for i in range(0, len(blob), 16):
+                    f.write("    " + ", ".join(f"0x{b:02X}"
+                                               for b in blob[i:i + 16]) + ",\n")
+                f.write("};\n\n")
+            f.write(f"static const uint8_t* const coup_animdata_{name}"
+                    f"[{args.frames}] = {{\n")
+            for n in range(args.frames):
+                f.write(f"    coup_animdata_{name}_f{n:02d},\n")
+            f.write("};\n\n")
+        f.write("static const uint8_t* const* const coup_animdata_all[5] = {\n")
+        for name in CHARACTERS:
+            f.write(f"    coup_animdata_{name},\n")
+        f.write("};\n\n#endif /* COUP_ANIM_SPRITE_DATA_H */\n")
+
+    spr_path = os.path.join(args.out, "coup_anim_sprites.h")
+    with open(spr_path, "w") as f:
+        f.write("/* Generated by convert_portraits.py. Do not edit. */\n")
+        f.write("#ifndef COUP_ANIM_SPRITES_H\n#define COUP_ANIM_SPRITES_H\n\n"
+                "#include <stdint.h>\n\n")
+        f.write(f"#define COUP_ANIM_W           {SPRITE_W}\n")
+        f.write(f"#define COUP_ANIM_H           {SPRITE_H}\n")
+        f.write(f"#define COUP_ANIM_FRAME_SIZE  {fsize}\n")
+        f.write(f"#define COUP_ANIM_FRAMES      {args.frames}\n")
+        f.write(f"#define COUP_ANIM_CHARS       {len(CHARACTERS)}\n")
+        f.write(f"#define COUP_ANIM_TOTAL_FRAMES ({args.frames} * {len(CHARACTERS)})\n")
+        f.write(f"#define COUP_ANIM_TOTAL_SIZE  "
+                f"({args.frames} * {len(CHARACTERS)} * {fsize})\n\n")
+        for i, name in enumerate(CHARACTERS):
+            f.write(f"#define COUP_ANIM_{name.upper()}  {i}\n")
+        f.write("\n")
+        for name in CHARACTERS:
+            f.write(f"static const uint16_t coup_anim_pal_{name}[16] = {{\n")
+            vals = [rgb_to_saturn555(*c) for c in all_pal[name]]
+            for i in range(0, 16, 4):
+                f.write("    " + ", ".join(f"0x{v:04X}" for v in vals[i:i + 4])
+                        + ",\n")
+            f.write("};\n\n")
+        f.write("static const uint16_t* const coup_anim_palettes[5] = {\n")
+        for name in CHARACTERS:
+            f.write(f"    coup_anim_pal_{name},\n")
+        f.write("};\n\n#endif /* COUP_ANIM_SPRITES_H */\n")
+
+    total = args.frames * len(CHARACTERS) * fsize
+    print(f"-> {data_path} and {spr_path}")
+    print(f"   {total:,} bytes of sprite data "
+          f"({len(CHARACTERS)} chars x {args.frames} frames x {fsize})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
