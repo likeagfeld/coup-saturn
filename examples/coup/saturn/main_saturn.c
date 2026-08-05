@@ -49,6 +49,7 @@
 #include "coup_qa_screen.h"
 #include "coup_ui.h"   /* COUP_FONT_* registry indices */
 #include "fonts/saturn_font_alagard_8x8.h"
+#include "fonts/saturn_font_coup_8x8.h"
 
 /* Plate/backdrop blend ratio, top:second.
  *
@@ -285,6 +286,16 @@ void main(void)
          * 8 px grid with no layout change at all. */
         saturn_font_alagard_8x8_desc(&body_font);
         cui_saturn_font_register(&body_font);
+
+        /* Index 3 - COUP_FONT_BODY. The game's own face, read straight off
+         * the supplied 8x8 sheet, so the whole UI speaks in the logo's voice
+         * rather than a borrowed one. Alagard stays registered at 2 as a
+         * fallback. */
+        {
+            saturn_font_desc_t coup_font;
+            saturn_font_coup_8x8_desc(&coup_font);
+            cui_saturn_font_register(&coup_font);
+        }
 
         cui_saturn_font_upload_all();
 

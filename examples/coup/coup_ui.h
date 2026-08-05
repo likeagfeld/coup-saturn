@@ -85,7 +85,8 @@
  * the built-in one - the built-in remains registered only as a fallback. */
 #define COUP_FONT_BUILTIN    0
 #define COUP_FONT_DISPLAY    1
-#define COUP_FONT_BODY       2
+#define COUP_FONT_ALAGARD    2   /* condensed Alagard, kept as a fallback */
+#define COUP_FONT_BODY       3   /* the COUP face, from the supplied sheet */
 
 /*============================================================================
  * Game Screen Layout Anchors
