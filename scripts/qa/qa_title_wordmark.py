@@ -206,6 +206,20 @@ def main():
         print(f"GATE WORDMARK: RED - {args.frame} not found; run "
               "qa_retroarch.py --shot first")
         return 1
+
+    # A capture older than the disc it is supposed to show is not evidence.
+    # MEASURED 2026-08-05: a sweep silently failed to write title.png, and
+    # this gate scored a three-hour-old frame showing the PREVIOUS wordmark -
+    # reporting RED on a build that was correct. A stale GREEN would have been
+    # worse. Freshness is part of validity, not a detail.
+    disc = "build/coup_game/track01.bin"
+    if os.path.exists(disc):
+        age = os.path.getmtime(disc) - os.path.getmtime(args.frame)
+        if age > 0:
+            print(f"GATE WORDMARK: INCONCLUSIVE - {args.frame} is "
+                  f"{age/60:.0f} min OLDER than the disc it should show. "
+                  "Re-capture; do not read this as a build verdict.")
+            return 2
     raw = Image.open(args.frame)
     frame = to_screen(raw)
     usable, why = frame_is_usable(frame)
