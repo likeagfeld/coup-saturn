@@ -25,10 +25,28 @@ estimated. Read `MASTER-GOAL.md` for the standing directives and
 --strict`, `qa_legibility`, `qa_title_wordmark`, `qa_cd_budget`,
 `qa_audio_restore`, `qa_retroarch --check`.
 
+## The five reported defects, and what each actually was
+
+Every one turned out to be a different thing from what it looked like.
+
+| Reported | Actual cause |
+|---|---|
+| Effects duplicated / cut off / off-centre / partial | ONE swapped argument pair in `coup_fx_loader.c`. Source and destination sizes were passed the wrong way round, so VDP1 fetched 128x128 out of a 64x64 texture - through the next frames and off the end - and painted it at native size at a position computed for double size. Four symptoms, one swap. |
+| Animations still too fast | The portrait idle was a bare `/ 8` inline in `coup_render.c`, so it was never revisited when effects were slowed 3 -> 14. Both rates are now named constants, asserted in SECONDS. |
+| Text bleeding outside boxes | The lobby `controls_panel` was 6 px too short for its own third control row. Whole-screen audit now reports zero spills. |
+| Game-over recap not scrollable | Wired in `3690961`. |
+| Sliver of a neighbouring background | NOT the artwork. `saturn_bg_upload()` fills a 512x256 plane from a 320x224 scene and left columns 320-511 and rows 224-255 holding the PREVIOUS backdrop. The "neighbour" was the last scene, which is why trimming the art never moved it. |
+
 ## Remaining
 
-**One item: the logo font.** Specification measured and recorded at the bottom
-of this file. It is an upgrade, not an outstanding fix.
+**Nobody has heard this build.** `qa_audio_restore` now proves the restore path
+runs 24x and re-issues playback 24x, so execution is established - but the
+shared `retroarch.cfg` is a headless rig and no capture in this project has
+ever had audio enabled. `scripts/qa/ra_coup_interactive.cfg` overrides the
+drivers for a human tester. This needs ears, not another gate.
+
+**The logo font** is an upgrade, not an outstanding fix. Spec at the bottom of
+this file.
 
 ## The one thing nobody has verified
 
@@ -54,6 +72,23 @@ and the pattern is the same each time:
   a colour gate are not substitutes.
 - The same gate scored a three-hour-old capture with no freshness check. A
   capture older than the disc is not evidence; it now returns INCONCLUSIVE.
+- `qa_audio_restore` and `qa_cd_budget` both read their witness at the linker
+  map address, which is a uniform 0x40 off from where the image loads. Both
+  were reading 64 bytes past their own struct. `qa_cd_budget` called the
+  garbage INCONCLUSIVE; `qa_audio_restore` called it RED - "every backdrop
+  load has silently killed the music" - on a build whose restore path had run
+  24 times. A gate that cannot distinguish "not booted yet" from "the path
+  failed" must report the former. Witnesses are now located by their MAGIC
+  within a bounded window, and the delta is printed so drift stays visible.
+- `test_fx_trigger` capped effect duration at 2.00 s, written when the longest
+  effect ran 1.87 s. A bound set just above the value it measures can only
+  ratify the present state - and this one went on to fail a FIX rather than a
+  defect. Bounds are now derived from something external (the server's 12 s
+  window), and asserted in one place only.
+
+The shape is always the same: **a gate that agrees with the present state
+instead of testing it.** Five instances now. When writing one, ask what
+reading would make it fire, and produce that reading deliberately.
 
 ## How to work on this
 
