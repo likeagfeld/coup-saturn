@@ -337,6 +337,30 @@ void coup_audio_start_music(void)
     music_playing = true;
 }
 
+void coup_audio_restore_music(void)
+{
+    /* Re-issue playback after something else has taken the CD pickup.
+     *
+     * There is exactly ONE pickup and it is exclusive. Streaming a backdrop
+     * off the disc issues CDC_CdPlay against the file's FAD range with
+     * CDC_PM_DFL, which REPLACES both the play range and the endless-repeat
+     * mode - so the music stops and nothing in GFS/STM/SGL puts it back
+     * (SEGALIB/MAN/MANGFS.TXT: "CD-DA files and CD-ROM files cannot be
+     * accessed simultaneously").
+     *
+     * coup_update() restarts the music on a screen change and coup_render()
+     * then streams that screen's backdrop, in that order, so without this the
+     * music would play for a handful of frames per transition and be silent
+     * the rest of the time.
+     *
+     * Only re-issues if music was supposed to be playing, so it is safe to
+     * call unconditionally after any disc read. */
+    if (!audio_ready || !music_playing) {
+        return;
+    }
+    coup_audio_start_music();
+}
+
 void coup_audio_stop_music(void)
 {
     CdcPos pos;
@@ -402,6 +426,11 @@ void coup_audio_play_sfx(int sfx_id)
 void coup_audio_start_music(void)
 {
     music_playing = true;
+}
+
+void coup_audio_restore_music(void)
+{
+    /* No disc off-target, so nothing can steal the pickup. */
 }
 
 void coup_audio_stop_music(void)

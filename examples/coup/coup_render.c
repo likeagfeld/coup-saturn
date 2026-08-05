@@ -2138,6 +2138,15 @@ void coup_render_screen(const coup_state_t* st)
                     break;
                 }
                 saturn_bg_set_scene(scene);
+
+                /* The streamed read takes the CD pickup and stops CD-DA -
+                 * there is only one pickup and CDC_CdPlay against the file's
+                 * FAD range replaces both the play range and the endless
+                 * repeat mode. coup_update() has already restarted the music
+                 * for this screen by now, so without this the music would
+                 * play for a few frames per transition and then go silent.
+                 * Restore AFTER the load, never before. */
+                coup_audio_restore_music();
             }
 
             saturn_fade_start(SATURN_FADE_BLACK, SATURN_FADE_NONE, 12, false);

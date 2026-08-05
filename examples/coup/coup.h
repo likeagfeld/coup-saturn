@@ -436,6 +436,16 @@ void coup_audio_init(void);
 void coup_audio_tick(void);
 void coup_audio_play_sfx(int sfx_id);
 void coup_audio_start_music(void);
+
+/**
+ * Re-issue CD-DA playback after a disc read has taken the pickup.
+ *
+ * There is one pickup and it is exclusive: streaming a backdrop replaces the
+ * play range and the repeat mode, stopping the music, and nothing in the CD
+ * library restores it. Safe to call unconditionally - a no-op unless music
+ * was supposed to be playing.
+ */
+void coup_audio_restore_music(void);
 void coup_audio_stop_music(void);
 void coup_audio_set_music_volume(int vol);
 void coup_audio_set_sfx_volume(int vol);

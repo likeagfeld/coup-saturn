@@ -36,8 +36,20 @@ static bool s_ready = false;
 #define VDP2_TVSTAT   (*(volatile uint16_t*)0x25F80004u)
 #define TVSTAT_VBLANK 0x0008u
 
-/* GfsDirName is 12 bytes in SEGA_GFS.H; sized from the macro regardless. */
-static uint8_t s_work[SLCD_WORK_SIZE(SATURN_CD_MAX_FILES)];
+/* The directory-name table SGL builds in this buffer.
+ *
+ * uint32_t, not uint8_t, and that matters. GFS_Init validates the alignment
+ * of its OWN work pointer (GFS.C:201: "if (((Uint32)work) & 3) return
+ * GFS_ERR_ALIGN") - but slCdInit passes SGL's internal buffer as that
+ * pointer and hands THIS array to dirtbl->dir.dir_n, which is never
+ * alignment-checked. A misaligned GfsDirName* means a misaligned longword
+ * store to GFS_DIR_DIRREC(r).fad, i.e. an SH-2 address-error exception - a
+ * hard hang, not the CDERR_ALIGN you would hope for.
+ *
+ * GCC/SH happens to align a uint8_t array to a word today, so this was
+ * working by luck. Declaring it as uint32_t makes it guaranteed.
+ * SLCD_WORK_SIZE(64) = 1536, divisible by 4, so the division is exact. */
+static uint32_t s_work[SLCD_WORK_SIZE(SATURN_CD_MAX_FILES) / sizeof(uint32_t)];
 
 static int s_vb_prev;
 
@@ -144,7 +156,13 @@ int saturn_cd_load(const char* name, void* dest, uint32_t nbytes)
         }
     }
 
+    /* Inside the timed window deliberately. slCdAbort -> STM_CloseGrp ends
+     * with GFCD_WaitPause(), a busy-wait bounded at roughly one second
+     * (GFS_CDC.C: PAUSE_TMOUT_COUNT is commented as a 1-second loop). Timing
+     * the load without it would leave the longest possible tail unmeasured,
+     * which is exactly where a budget gate must not have a blind spot. */
     slCdAbort(hn);                      /* releases the handle */
+    frames += vb_tick();
 
     g_saturn_cd_stats.last_frames = (int32_t)frames;
     g_saturn_cd_stats.last_result = 0;
