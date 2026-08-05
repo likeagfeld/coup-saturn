@@ -163,3 +163,21 @@ CUI_TEST(every_difficulty_label_fits_its_plate)
      * neighbour. */
     CUI_ASSERT(spacing > plate_w);
 }
+
+CUI_TEST(the_longest_menu_item_fits_its_plate_with_its_inset)
+{
+    /* Menu items are left-aligned, which is right for a list - but they must
+     * still clear the plate border and not run off the far edge. The longest
+     * label the block phase can produce is "Block as Ambassador". */
+    const char* longest = "Block as Ambassador";
+    const int plate_w = COUP_UI.game.select_action.item_w;
+    int text_w = 0;
+
+    while (longest[text_w]) {
+        text_w++;
+    }
+    text_w *= COUP_FONT_ADVANCE;
+
+    CUI_ASSERT(COUP_ITEM_TEXT_INSET > 0);          /* never flush to the edge */
+    CUI_ASSERT(COUP_ITEM_TEXT_INSET + text_w <= plate_w);
+}

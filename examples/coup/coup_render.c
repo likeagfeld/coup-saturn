@@ -1471,7 +1471,8 @@ static void render_selection_list(
             snprintf(line, sizeof(line), "%s%s", cur, items[i].label);
         }
 
-        CUI_DISPLAY()->draw_text_sprite(layout->item_x, py, line, color);
+        CUI_DISPLAY()->draw_text_sprite(layout->item_x + COUP_ITEM_TEXT_INSET,
+                                        py, line, color);
     }
 
     if (hint) {
@@ -1565,7 +1566,9 @@ static void render_phase_select_target(const coup_state_t* st)
         }
 
         snprintf(line, sizeof(line), " %s %-12s $%d", cursor, p->name, p->coins);
-        CUI_DISPLAY()->draw_text_sprite(ST->item_x, py + ST->item_text_offset_y, line, color);
+        CUI_DISPLAY()->draw_text_sprite(ST->item_x + COUP_ITEM_TEXT_INSET,
+                                        py + ST->item_text_offset_y, line,
+                                        color);
 
         opp_idx++;
     }

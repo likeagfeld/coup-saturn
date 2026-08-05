@@ -25,6 +25,13 @@
  * Font Configuration
  *============================================================================*/
 #define COUP_FONT_ADVANCE   8    /* Horizontal pixels per character */
+
+/* Gap between a plate's left edge and the label on it.
+ *
+ * Menu items used to be drawn at exactly their plate's x, so every label sat
+ * flush against the highlight border while the title above it was inset by 4.
+ * The two now share this value. */
+#define COUP_ITEM_TEXT_INSET 4
 #define COUP_FONT_ROW_H     8    /* Vertical pixels per text row */
 
 /*============================================================================
