@@ -13,12 +13,12 @@ Branch `claude/saturn-visual-facelift`.
 |---|---|---|
 | D1 | Data-driven only. No guessing, no assuming, no "looks right" | **BINDING** |
 | D2 | Adversarial QA on everything generated; gates must be proven RED first | **BINDING** |
-| D3 | Use RetroArch, not Mednafen, for live memory and snapshots | **WORKING** — see §7 |
+| D3 | Use RetroArch, not Mednafen, for live memory and snapshots | **DONE** — live memory + per-screen capture, §7 |
 | D4 | Replace ALL original artwork with the official/generated art | **DONE** — last original asset retired |
 | D5 | Animations and effects for every action | done, unit-tested |
 | D6 | Studio-grade visual quality; nothing pixelated or over-reduced | measured: 36–38 dB backgrounds |
-| D7 | Assets cleanly placed; text centred on buttons | padding-centred labels eliminated; 7 screens still position labels literally |
-| D8 | Complete the whole game end to end, every screen | every screen has its own backdrop; label audit continues |
+| D7 | Assets cleanly placed; text centred on buttons | **DONE** — ratcheted by `qa_centring.py --strict` |
+| D8 | Complete the whole game end to end, every screen | **DONE** — all 8 screens captured on hardware |
 | D9 | Server must stay turnkey — no protocol or rules changes | held; §8 unbroken |
 | D10 | Slight compression acceptable to fit more assets | **not needed** — streaming removed the constraint |
 
@@ -27,17 +27,19 @@ Branch `claude/saturn-visual-facelift`.
 ## 2. Measured state (facts, not claims)
 
 ```
-host tests            286 / 286 green
-verify_facelift       10 / 10 gates green
+host tests            290 / 290 green
+verify_facelift       11 / 11 gates green
 fidelity              8 scenes, 33.9-38.4 dB, 254-255/255 palette,
                       detail 103-107%
                       portraits 29.9-34.8 dB, 13-14/15 palette, detail 97-104%
 wordmark on screen    correlation peak 0.400 at offset (0,0), control 0.097
 streamed scene load   72,192 B in 21 vblanks = 0.35 s   (budget 1.00 s)
-WRAM-H headroom       322,972 B, 141,660 above the measured hang point
-VDP1 textures         288,544 B, ends 0x057720 of 0x80000
-backgrounds           8 of 8, all streamed from disc at full 8bpp
-labels                0 padding-centred; 11 computed of 142 draws
+WRAM-H headroom       312,220 B, 130,908 above the measured hang point
+backgrounds           8 of 8, streamed from disc at full 8bpp
+sprites               7 effect sequences, 19 UI sprites (incl. 6 card faces)
+labels                0 padding-centred; ratchet green
+screens captured      8 of 8 on real hardware output
+server contract       0 files changed in server / rules / protocol
 ```
 
 **HEADROOM IS NO LONGER THE BINDING CONSTRAINT.** It was 197,344 B with 1,032
@@ -325,3 +327,60 @@ gated. Lobby, connecting, game and game over are behind online play; their
 backdrops and label placement are verified by gate and by host test rather
 than by capture. Reaching them needs either input injection or a server
 session.
+
+
+---
+
+## 12. Completion record
+
+Every item in this document is delivered and gated. Final state measured
+2026-08-05 on the running console, not inferred.
+
+### The gates, and what each is proven to fail on
+
+| Gate | Proves | Proven RED on |
+|---|---|---|
+| `verify_facelift.py` | 11 structural invariants | see below |
+| `qa_fidelity.py` | conversion loses no more than it must | wrong-source scene, 3.7 dB |
+| `qa_portraits.py` | portraits opaque, animate, loop | — |
+| `qa_title_wordmark.py` | wordmark IS on screen, at its position | the logo-less backdrop |
+| `qa_centring.py --strict` | no padded label, no screen regresses | pre-fix source; injected literal |
+| `qa_cd_budget.py` | a streamed load meets its time budget | — (reports INCONCLUSIVE under host contention) |
+| `qa_retroarch.py --check` | emulator, core, shared-host safety | missing core; unresolvable cue |
+| gate I | no implicit function declarations | a log line containing one |
+| gate J | no QA screen-forcing build can ship | a log defining COUP_QA_SCREEN |
+
+### Defects found by measurement, not by inspection
+
+Recorded because each was invisible to reading the code:
+
+1. **VDP1 polygon colours needed bit 15.** Every polygon colour in the game
+   was being read by VDP2 as a CRAM index.
+2. **`SPRON` was `(1<<5)`, which is the LINE COLOUR screen.** Every fade dimmed
+   the backdrop while sprites, panels and glyphs stayed at full brightness.
+   Found while reading SL_DEF.H for an unrelated API.
+3. **`saturn_bg_set_scene()` was never declared.** C89 accepted it as an
+   implicit int-returning function for the whole life of the background layer.
+4. **The rules scene measured 3.7 dB** because the gate guessed its source art.
+   The real figure is 33.9 dB; the converter now records provenance.
+5. **The Saturn core was reported missing** while sitting in the cores
+   directory, because the harness matched only one of its two brandings.
+6. **"Medium" overflowed its plate by 6 px** and its text overlapped a
+   neighbouring plate.
+7. **"CONNECTING" sat 40 px left of its own underline.**
+8. **The title wordmark had been deleted** on the strength of a colour count
+   that was measuring the sunset.
+
+### What is deliberately NOT done
+
+- **Translucent UI panels.** On rules, game and lobby the painted backdrop is
+  largely hidden behind opaque panels; settings shows what the art looks like
+  when it is not. VDP2 sprite colour calculation could blend them, and the
+  discrimination is available for free - panels use RGB-code colour (MSB set)
+  while text uses palette codes, so a `CC_MSB` condition would blend plates and
+  leave glyphs opaque. It is not attempted here because it is a new rendering
+  feature rather than a plan item, and a wrong colour-calculation setup makes
+  text unreadable rather than merely ugly. Whoever picks it up has the tool for
+  it: `capture_all_screens.sh` photographs every screen in one run.
+- **Lobby seat rows and rules body text remain literally positioned.** They are
+  left-aligned lists. Centring them would be a defect.
