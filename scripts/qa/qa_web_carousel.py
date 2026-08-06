@@ -424,10 +424,16 @@ def check(css_mutate=None, js_mutate=None):
         if not seen_3d[name]:
             fails.append(f"{CSS}: `{name}` never sets transform-style: "
                          f"preserve-3d, so its children are flattened into it")
-    if opacity_animations - {".tc-face"}:
+    # .tc-face-front and .tc-face-back are SIBLING LEAVES of .tc-face -
+    # nothing is nested below either, so an opacity animation on them groups
+    # nothing and cannot flatten a 3D context. The back carries its own
+    # shallower fade (tcFadeBack) because it is a flat repeating pattern and
+    # is the one face that turns into a featureless rectangle when dimmed.
+    LEAF_FACES = {".tc-face", ".tc-face-front", ".tc-face-back"}
+    if opacity_animations - LEAF_FACES:
         fails.append(
             f"{CSS}: the tcFade opacity animation is applied to "
-            f"{sorted(opacity_animations - {'.tc-face'})}. Animated opacity "
+            f"{sorted(opacity_animations - LEAF_FACES)}. Animated opacity "
             f"below 1 is a grouping property - it must stay on the leaf "
             f"faces.")
     if opacity_animations:

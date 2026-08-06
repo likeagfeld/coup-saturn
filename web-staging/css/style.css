@@ -1865,17 +1865,24 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
        art mirrored instead - readable enough to notice and wrong. */
     .title-carousel.tc-motion .tc-face-back {
         display: block;
-        /* scaleX(-1) counter-mirrors the 180 flip, so the reverse shows the
-           role art the right way round instead of reversed. Without it the
-           choice is a mirrored face or a blank-looking card back - and the
-           back was reported as "occasional blank cards", because three of
-           the six were showing no role at any moment. */
+        /* scaleX(-1) counter-mirrors the 180 flip so the back's emblem is
+           not painted reversed. */
         transform: rotateY(180deg) scaleX(-1);
     }
 
     /* The front card is the one that has to read at a glance, so it gets a
        little more separation from the backdrop than the others. box-shadow,
        not filter - see the DEPTH ORDER note. */
+    /* The BACK never dims as far as a front face does. A role card at low
+       opacity still reads, because its art is high-contrast; the back is a
+       flat repeating pattern (mean 146.6, 87 colour buckets) and is the one
+       face that turns into a featureless rectangle when faded - which is
+       what "occasional blank cards" actually was. Holding it above 0.78
+       keeps it legibly a CARD BACK while it is turned away. */
+    .title-carousel.tc-motion .tc-face-back {
+        animation-name: tcFadeBack;
+    }
+
     .title-carousel.tc-motion .tc-face-front {
         box-shadow: 0 14px 40px rgba(0, 0, 0, 0.72),
                     0 0 0 1px rgba(208, 168, 32, 0.18);
@@ -1907,5 +1914,16 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
     50%     { opacity: 0.62; }
     66.667% { opacity: 0.72; }
     83.333% { opacity: 0.9; }
+    100%    { opacity: 1; }
+}
+
+/* Companion to tcFade for the card BACK - same shape, shallower floor. */
+@keyframes tcFadeBack {
+    0%      { opacity: 1; }
+    16.667% { opacity: 0.95; }
+    33.333% { opacity: 0.86; }
+    50%     { opacity: 0.78; }
+    66.667% { opacity: 0.86; }
+    83.333% { opacity: 0.95; }
     100%    { opacity: 1; }
 }
