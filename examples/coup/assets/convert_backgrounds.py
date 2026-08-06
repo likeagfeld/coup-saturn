@@ -285,6 +285,16 @@ def repair_edges(im):
     return Image.fromarray(a)
 
 
+def clamp_outer_columns(img, n):
+    """Repeat the first/last good column outward, killing resampler ringing."""
+    import numpy as np
+    a = np.asarray(img.convert("RGB")).astype(np.uint8).copy()
+    w = a.shape[1]
+    a[:, -n:, :] = a[:, -n - 1:-n, :]
+    a[:, :n, :] = a[:, n:n + 1, :]
+    return Image.fromarray(a)
+
+
 def convert(src_path):
     """Return (bitmap_bytes, palette_list, preview_image)."""
     img = Image.open(src_path).convert("RGB")
@@ -294,6 +304,12 @@ def convert(src_path):
     # reaches.
     img = repair_edges(img)
     img = img.resize((VISIBLE_W, VISIBLE_H), Image.LANCZOS)
+    # LANCZOS RINGS at the boundary when a cropped image is rescaled back to
+    # full width, leaving a step in the outermost columns that is not in the
+    # source. MEASURED on the shipped binaries: BGDEFEAT and BGCONNEC both
+    # step 30-31 at column 319, about 20x their median. The same defect was
+    # found and fixed on the web assets; this pipeline never got it.
+    img = clamp_outer_columns(img, 3)
     img, _gamma = lift_shadows(img, src_path)
 
     quant = img.quantize(colors=MAX_COLORS, method=Image.MEDIANCUT)

@@ -37,7 +37,6 @@ REQUIRED = {
     "coup_shading_pulse":         "a readied lobby slot never pulses",
     "coup_shading_wash":          "lobby slots never separate occupied from empty",
     "coup_shading_spotlight":     "the winner never gets a spotlight",
-    "saturn_linescroll_arm":      "the title shimmer is never switched on",
     "saturn_linescroll_advance":  "the shimmer is armed but never advances",
     "saturn_coinfx_payout":       "coins never launch on a payout",
     "saturn_coinfx_tick":         "coins in flight never move",
@@ -85,7 +84,12 @@ REQUIRED = {
 # Built and tested but not yet driven by a game event. Listed explicitly so
 # the gap is VISIBLE rather than silently absent - the whole point of this
 # gate. Move an entry up into REQUIRED when its trigger is written.
-KNOWN_UNWIRED = {}
+KNOWN_UNWIRED = {
+    "saturn_linescroll_arm":
+        "the title shimmer is DELIBERATELY off - reported as nauseating, and "
+        "its horizontal row shift exposed plane columns past the scene's 320. "
+        "saturn_linescroll.c stays tested and callable; nothing arms it.",
+}
 
 # A gouraud table can be generated and uploaded every frame and still never
 # reach the screen, because nothing passes its SLOT to a draw. That is a

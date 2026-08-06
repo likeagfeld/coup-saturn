@@ -202,7 +202,23 @@ static int text_px_w(const char* s)
                                            : 0;
         int adv = (e && e->desc.advance_x > 0) ? e->desc.advance_x
                                                : COUP_FONT_ADVANCE;
-        return n * adv;
+        int cell = (e && e->desc.cell_width > 0) ? e->desc.cell_width : adv;
+
+        if (n == 0) {
+            return 0;
+        }
+        /* The last glyph occupies its CELL, not its advance, and for the
+         * display face those differ: it is 16 px wide on an 8 px advance.
+         * Returning n*adv therefore under-reported "PLAY" by 8 px, and every
+         * caller that centres on this width - button_centered, draw_centered,
+         * the plate that sizes itself from it - shifted the text 4 px left
+         * inside its own button. Reported as "PLAY is not centered inside
+         * the button".
+         *
+         * Width is (n-1) advances plus one full cell. For a font whose cell
+         * equals its advance this is identical to n*adv, so the 8x8 faces are
+         * unaffected. */
+        return (n - 1) * adv + cell;
     }
 #else
     return n * COUP_FONT_ADVANCE;
@@ -3256,11 +3272,25 @@ void coup_render_screen(const coup_state_t* st)
                  * used without relationship to the cell format and bit map
                  * format" - and NBG1 is one of only two layers that support
                  * line scroll at all. */
-                if (scene == COUP_BG_SCENE_TITLE) {
-                    saturn_linescroll_arm();
-                } else {
-                    saturn_linescroll_disarm();
-                }
+                /* The sine shimmer is OFF.
+                 *
+                 * Two reasons, and either alone would be enough. It was
+                 * reported as making the viewer feel sick - a full-screen
+                 * wave is exactly the kind of large-field motion that
+                 * provokes that, and no amount of reducing the amplitude
+                 * makes a nauseating effect pleasant.
+                 *
+                 * It is also implicated in the edge artifact reported on the
+                 * title when returning from a game: line scroll SHIFTS each
+                 * row horizontally, so rows near the edge sample plane
+                 * columns outside the 320 the scene actually occupies. It is
+                 * armed on the title and nowhere else, which matches where
+                 * the artifact was seen.
+                 *
+                 * saturn_linescroll.c is kept, tested and callable - the
+                 * capability is proven and the VRAM table costs nothing while
+                 * disarmed - but nothing arms it. */
+                saturn_linescroll_disarm();
 
                 /* The streamed read takes the CD pickup and stops CD-DA -
                  * there is only one pickup and CDC_CdPlay against the file's

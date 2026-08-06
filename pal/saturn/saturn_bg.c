@@ -95,16 +95,31 @@ static bool saturn_bg_upload(int scene)
          *
          * Index 0 is the reserved transparent entry, so the cleared margin
          * shows the back screen rather than stale art. */
+        /* EXTEND the last visible column into the margin rather than
+         * clearing it to index 0.
+         *
+         * Index 0 is TRANSPARENT on a scroll screen, so a cleared margin
+         * shows whatever is behind NBG1 - and any display or overscan that
+         * reaches past column 319 then shows a strip that is not the scene.
+         * Reported on the victory screen, whose own 320 columns measure
+         * clean, which is what ruled the artwork out and pointed here.
+         *
+         * Repeating the edge pixel means anything past the window continues
+         * the picture instead of punching a hole in it. Same cost. */
         for (x = COUP_BG_VISIBLE_W; x < COUP_BG_W; x++) {
-            dst[x] = 0;
+            dst[x] = row[COUP_BG_VISIBLE_W - 1];
         }
     }
     /* Same for the rows below the picture: the plane is 256 tall and a scene
      * is 224, so rows 224-255 also held the previous scene. */
+    /* Same for the rows below the picture: repeat the last visible row. */
     for (y = COUP_BG_VISIBLE_H; y < COUP_BG_H; y++) {
         volatile uint8_t* dst = vram + (uint32_t)y * COUP_BG_W;
+        const uint8_t* last = src + (uint32_t)(COUP_BG_VISIBLE_H - 1)
+                                    * COUP_BG_VISIBLE_W;
         for (x = 0; x < COUP_BG_W; x++) {
-            dst[x] = 0;
+            dst[x] = last[(x < COUP_BG_VISIBLE_W) ? x
+                                                  : (COUP_BG_VISIBLE_W - 1)];
         }
     }
     (void)i;
