@@ -31,6 +31,12 @@
 /* SGL declarations */
 #include "../../pal/saturn/sgl_defs.h"
 
+/* RBG0 title-fly-in proof of concept (Approach C). Always linked in;
+ * saturn_rbg0_run_title_demo() is only ever CALLED below when
+ * -DCOUP_RBG0_TITLE_DEMO is defined - see saturn_rbg0.h's "DEMO GATING"
+ * note, which mirrors coup_qa_screen.h's existing pattern exactly. */
+#include "../../pal/saturn/saturn_rbg0.h"
+
 /* Coup game */
 #include "coup.h"
 #include "coup_protocol.h"
@@ -260,6 +266,26 @@ void main(void)
     slColorCalcOn(SPRON);
 
     slTVOn();
+
+#ifdef COUP_RBG0_TITLE_DEMO
+    /* Approach C proof of concept: perspective title fly-in via VDP2 RBG0.
+     * TITLE-SCREEN-ONLY, gated behind a build flag exactly like
+     * COUP_QA_SCREEN (coup_qa_screen.h) - compiles to nothing and changes
+     * no behaviour on the shipped disc unless -DCOUP_RBG0_TITLE_DEMO is
+     * passed. See docs/superpowers/specs/2026-08-04-saturn-visual-facelift-
+     * design.md section 3 (Approach C) and saturn_rbg0.h for the full bank/
+     * register citation trail.
+     *
+     * Runs and tears down completely before font/sprite loading below,
+     * restoring exactly the scroll-screen state the normal boot path
+     * already expects at this point: slScrAutoDisp(NBG0ON) - the same
+     * fallback call already used above (line ~244) when NBG1ON cannot be
+     * armed. NBG1's own bitmap content has not been populated by
+     * saturn_bg_init() yet at this point in boot, so RBG0 borrows NBG1's
+     * scroll-screen slot only for the duration of this demo and gives it
+     * back before anything downstream expects NBG1 to be live. */
+    saturn_rbg0_run_title_demo();
+#endif
 
     /* ---- Register the display font ----
      * The PAL registers the built-in 8x8 face as index 0 (COUP_FONT_BODY).

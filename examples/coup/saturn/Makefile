@@ -109,6 +109,7 @@ SRCS += $(PAL_SATURN)/saturn_fade.c
 SRCS += $(PAL_SATURN)/saturn_distort.c
 SRCS += $(PAL_SATURN)/saturn_linescroll.c
 SRCS += $(PAL_SATURN)/saturn_coinfx.c
+SRCS += $(PAL_SATURN)/saturn_rbg0.c
 # Display font used for headings and buttons (COUP_FONT_DISPLAY).
 SRCS += $(PAL_SATURN)/fonts/saturn_font_alagard_16x16.c
 SRCS += $(PAL_SATURN)/fonts/saturn_font_alagard_8x8.c

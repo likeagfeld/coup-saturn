@@ -97,6 +97,20 @@ def build_map():
     if off is not None:
         claims.append(("background bitmap (256-col)", off, off + BANK256 - 1))
 
+    # RBG0's title-fly-in placeholder palette (pal/saturn/saturn_rbg0.h) -
+    # same reasoning as the background bitmap: a fixed 256-colour boundary,
+    # not part of the growing 16-colour chain, so it needs the same
+    # explicit cross-check qa_vram_rbg0_map.py also runs.
+    rbg0_off = None
+    rbg0_h = "pal/saturn/saturn_rbg0.h"
+    if os.path.isfile(rbg0_h):
+        s = open(rbg0_h, encoding="utf-8", errors="replace").read()
+        m = re.search(r"#define\s+SATURN_RBG0_CRAM_OFFSET\s+0x([0-9A-Fa-f]+)", s)
+        if m:
+            rbg0_off = int(m.group(1), 16)
+    if rbg0_off is not None:
+        claims.append(("RBG0 title fly-in (256-col)", rbg0_off, rbg0_off + BANK256 - 1))
+
     return claims, bank
 
 

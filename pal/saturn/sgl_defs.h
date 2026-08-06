@@ -235,6 +235,167 @@ extern void slBMPalette(Uint16 screen, Uint16 pal);
 #define BM_512x256      0x02
 #define BM_512x512      0x06
 
+/*============================================================================
+ * VDP2 RBG0 (rotation background) - SGL 3.02j SL_DEF.H:982-1009,1085,1089;
+ * ROTSCROLL struct SL_DEF.H:480-512; ANGLE/DEGtoANG SL_DEF.H:90,145.
+ *
+ * Added for the title-screen "Mode-7" fly-in (Approach C,
+ * docs/superpowers/specs/2026-08-04-saturn-visual-facelift-design.md
+ * section 3). None of this was previously declared here - sgl_defs.h only
+ * carried scnRBG0 (already above, in the "screen select" section) and
+ * RBG0ON. Every prototype below is transcribed VERBATIM from
+ * NOV96_DTS/LIBRARY/SDK_10J/SGL302/INC/SL_DEF.H (the header shipped
+ * alongside LIBSGL.A for the exact SGL 3.02j build this PAL links against),
+ * cross-checked against the ST-238-R1 SGL Reference prose entry for each
+ * function and, where a working sample exists, against that sample's call
+ * site.
+ *
+ * ONE REAL DISCREPANCY FOUND AND RESOLVED: ST-238-R1's prose "Format" line
+ * for slBitMapNbg0/1 shows only 2 parameters (col_type, bmsize) with no
+ * VRAM address. SL_DEF.H declares 3 params - (Uint16, Uint16, void*) - for
+ * slBitMapNbg0, slBitMapNbg1 AND slBitMapRbg0 alike (self-consistent across
+ * all three), and pal/saturn/saturn_bg.c's ALREADY-WORKING call site
+ * (`slBitMapNbg1(COL_TYPE_256, BM_512x256, (void*)SATURN_BG_VRAM)`) proves
+ * the 3-argument form is what the linked SGL302 LIBSGL.A actually expects.
+ * The doc text is almost certainly describing an older pre-3.0 revision of
+ * the API (ST-238-R1 is dated 051795, over a year before this SGL302 SDK
+ * tree) that had not yet grown the explicit address parameter. The header
+ * shipped with the library wins for ABI-shaped questions - trusting the
+ * shorter doc prototype here would silently read a garbage 3rd register as
+ * the bitmap base address.
+ */
+
+/* ROTSCROLL - the rotation parameter table's WRAM/VRAM-writable C shape
+ * (SL_DEF.H:480-512). slRparaInitSet() writes SGL's default identity
+ * rotation into a table of this shape at the VRAM address passed to it;
+ * the FIXED per-line/per-dot increment fields are then updated each frame
+ * indirectly via slZoomR/slZrotR/slDispCenterR/slLookR + slScrMatConv(),
+ * never by the caller poking this struct's fields directly on the VRAM
+ * copy (VRAM disallows byte-at-a-time struct writes of the FIXED fields
+ * safely across bus width boundaries; SGL's own accessor functions are the
+ * supported path - S_8_9_1/MAIN.C uses no other write path). */
+typedef struct rdat {
+    FIXED  XST;     /* screen start X coordinate */
+    FIXED  YST;     /* screen start Y coordinate */
+    FIXED  ZST;     /* screen start Z coordinate */
+    FIXED  DXST;    /* screen vertical coordinate increment, X */
+    FIXED  DYST;    /* screen vertical coordinate increment, Y */
+    FIXED  DX;      /* screen horizontal coordinate increment, X */
+    FIXED  DY;      /* screen horizontal coordinate increment, Y */
+    FIXED  MATA;    /* 3x3 rotation matrix */
+    FIXED  MATB;
+    FIXED  MATC;
+    FIXED  MATD;
+    FIXED  MATE;
+    FIXED  MATF;
+
+    Sint16 PX;      /* viewpoint coordinates */
+    Sint16 PY;
+    Sint16 PZ;
+    Sint16 dummy0;
+    Sint16 CX;      /* center coordinates */
+    Sint16 CY;
+    Sint16 CZ;
+    Sint16 dummy1;
+
+    FIXED  MX;      /* parallel shift */
+    FIXED  MY;
+    FIXED  KX;      /* expansion/reduction coefficient */
+    FIXED  KY;
+
+    Uint32 KAST;    /* coefficient table start address */
+    Sint32 DKAST;   /* coefficient table vertical address increment */
+    Sint32 DKA;     /* coefficient table horizontal address increment */
+} ROTSCROLL;
+
+/* ANGLE - 16-bit BAMS-style angle, full circle = 65536 units (SL_DEF.H:90).
+ * DEGtoANG is a compile-time float-literal macro (SL_DEF.H:145); this PAL
+ * only ever calls it with a literal constant (matching S_8_9_1/MAIN.C:15,
+ * `ANGLE yama_angz = DEGtoANG(0.0);`), never with a runtime value - the
+ * SH7095 in Saturn has no hardware FPU, so any RUNTIME float expression
+ * would be software-emulated and expensive. Per-frame angle deltas in this
+ * PAL are precomputed plain-integer ANGLE constants instead. */
+typedef Sint16 ANGLE;
+#define DEGtoANG(d)   ((ANGLE)((65536.0 * (d)) / 360.0))
+
+/* RBG0 character/bitmap/page setup - SL_DEF.H:982,987,1085,1089. */
+extern void slCharRbg0(Uint16 col_type, Uint16 chara_size);
+extern void slPageRbg0(void *celadr, void *coladr, Uint16 type);
+extern void slBitMapRbg0(Uint16 col_type, Uint16 bmsize, void *bm_adr);
+#define bmRBG0          3       /* SL_DEF.H:672 */
+#define slBMPaletteRbg0(pal)  slBMPalette(bmRBG0, pal)
+
+/* RBG0 plane size / screen-over / map (cell-format only; not called by this
+ * PAL's bitmap-mode path, declared because the task's prerequisite list
+ * calls for them and a future cell-format RBG0 caller will need them).
+ * SL_DEF.H:992-995,1000-1001. */
+extern void slPlaneRA(Uint16 type);
+extern void slPlaneRB(Uint16 type);
+extern void slOverRA(Uint16 mode);
+extern void slOverRB(Uint16 mode);
+extern void sl1MapRA(void *a);
+extern void sl1MapRB(void *b);
+
+/* Rotation parameter table control - SL_DEF.H:1004-1006.
+ *
+ * slRparaInitSet's ptr argument is a genuinely CALLER-CHOSEN VRAM address,
+ * not a library-fixed constant - CONFIRMED against a real working sample,
+ * not assumed from the prose alone: NOV96_DTS/LIBRARY/SDK_10J/SGL302/
+ * SAMPLE/S_8_9_1/MAIN.C:10,25 defines its own
+ * `RBG0_PAR_ADR (VDP2_VRAM_A1 + 0x1fe00)` and passes that literal to
+ * slRparaInitSet - a DIFFERENT address than the SL_DEF.H:463
+ * RBG_PARA_ADR convenience macro (KTBL0_RAM + 0x1ff00) that some other
+ * samples use. Both work; the address is a convention, not a hardware
+ * requirement. ST-237-R1 tutorial section 8 (VDP2_Manual cross-reference:
+ * "For the parameter, substitute the starting address of the area where
+ * the rotation parameters are to be stored") says the same in prose.
+ * Table footprint is 0x100 bytes total (both A and B slots - ST-237-R1
+ * "Rotation parameter size: 100H"), B at ptr+0x80 always. */
+extern void slRparaInitSet(ROTSCROLL *ptr);
+extern void slCurRpara(Uint16 flag);
+extern void slRparaMode(Uint16 mode);
+#define RA          0   /* SL_DEF.H:574 - use rotation parameters A */
+#define RB          1   /* SL_DEF.H:575 - use rotation parameters B */
+#define K_CHANGE    2   /* SL_DEF.H:576 - switch by coefficient data (param A) */
+#define W_CHANGE    3   /* SL_DEF.H:577 - switch by rotation parameter window */
+
+/* Coefficient table control - SL_DEF.H:1007-1009. Declared per the task's
+ * stated prerequisite; NOT called by this PAL's default title fly-in
+ * (Mode 0 / RA-only, K_OFF implicit), specifically to avoid the CRAM
+ * collision a coefficient table would cause: CRKTE=1 repurposes CRAM
+ * 0x800-0xFFF for coefficient storage (ST-058-R2 / VDP2_Manual.txt:6418-
+ * 6420, "the second half of the color RAM (100800H ~ 100FFFH) is used for
+ * the coefficient table data"), which overlaps the background bitmap
+ * palette at CRAM 0xE00-0xFFF (saturn_bg.h:58-59). A future caller that
+ * DOES need per-dot distortion must place the coefficient table in VRAM
+ * (RDBSx = 01, "coefficient table RAM" - VDP2_Manual.txt:6437-6441), never
+ * in CRAM, while this background palette claim stands. */
+extern void slMakeKtable(void *adr);
+extern void slKtableRA(void *ktable_adr, Uint16 mode);
+extern void slKtableRB(void *ktable_adr, Uint16 mode);
+#define K_OFF       0        /* SL_DEF.H:560 */
+#define K_ON        1        /* SL_DEF.H:561 */
+#define K_2WORD     0        /* SL_DEF.H:562 */
+#define K_1WORD     2        /* SL_DEF.H:563 */
+#define K_MODE0     0        /* SL_DEF.H:564 */
+#define K_MODE1     4        /* SL_DEF.H:565 */
+#define K_MODE2     8        /* SL_DEF.H:566 */
+#define K_MODE3     12       /* SL_DEF.H:567 */
+#define K_LINECOL   0x10     /* SL_DEF.H:568 */
+#define K_DOT       0x20     /* SL_DEF.H:569 */
+#define K_LINE      0        /* SL_DEF.H:570 */
+#define K_FIX       0x40     /* SL_DEF.H:571 */
+
+/* RBG0 display placement / animation - SL_DEF.H:1024-1036.
+ * slZoomR's x/y are the RECIPROCAL of the scale factor (ST-238-R1: "to
+ * enlarge the figure by 2.0x ... substitute 1/2"), confirmed by the doc
+ * prose, not assumed. */
+extern void slDispCenterR(FIXED x, FIXED y);
+extern void slLookR(FIXED x, FIXED y);
+extern void slZoomR(FIXED x, FIXED y);
+extern void slZrotR(ANGLE angz);
+#define slPriorityRbg0(num)   slPriority(scnRBG0, num)
+
 /**
  * Set scroll plane size (number of pages)
  * @param size - PL_SIZE_1x1, PL_SIZE_2x1, or PL_SIZE_2x2
