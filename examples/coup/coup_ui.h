@@ -88,6 +88,28 @@
 #define COUP_FONT_ALAGARD    2   /* condensed Alagard, kept as a fallback */
 #define COUP_FONT_BODY       3   /* the COUP face, from the supplied sheet */
 
+/* Index 4 - buch 4x6. HALF the advance of every other registered face
+ * (advance_x 4 vs 8, saturn_font_buch_4x6.c:69-71) on the SAME 8x8 cell, so
+ * it drops into the existing 8 px rows and 10 px pitch with no layout change
+ * at all - only the horizontal ink halves.
+ *
+ * It exists for one measured problem. COUP_LOG_LINE_LEN is 39 characters
+ * (coup.h) and coup_log() really does fill it - coup_game.c builds
+ * "<name> plays <action> on <name>", up to 52 characters, and caps it at 39.
+ * In ANY 8 px face 39 characters is 312 px. The screen is 320. So a container
+ * can hold a whole log line only if it has 8 px of total chrome: no border,
+ * no scroll arrow, no marker column, no overscan inset. The game log's panel
+ * is ALREADY the widest one possible, {0, 0, 320, 54}, and it still cannot
+ * seat the line (312) plus its scroll arrow (8) plus any margin. Widening
+ * cannot solve the 39-character case anywhere on this screen; in this face
+ * the same line is 160 px and fits every log view with room to spare.
+ *
+ * Use it for DENSE SECONDARY content - log rows, the recap, a name squeezed
+ * between two card faces. Headings, buttons, prompts and action lists stay in
+ * COUP_FONT_BODY: on a CRT this face is small, and legibility outranks
+ * tidiness for anything the player has to read to take a turn. */
+#define COUP_FONT_CONDENSED  4
+
 /*============================================================================
  * Game Screen Layout Anchors
  *
@@ -112,12 +134,29 @@
 #define GAME_HAND_Y          150
 #define GAME_HAND_H           74
 
-/* Phase panel insets within center column */
-#define GAME_CONTENT_X       (GAME_CENTER_X + 4)                      /* 76  */
-#define GAME_CONTENT_W       (GAME_CENTER_W - 8)                      /* 168 */
-#define GAME_TEXT_X           (GAME_CENTER_X + 8)                      /* 80  */
+/* Phase panel insets within center column.
+ *
+ * WIDENED: the phase panels used to be inset a further 4 px inside the centre
+ * column and their text a further 4 px inside that, spending 16 px of a 176 px
+ * column on a double margin. The column's real neighbours are the seat
+ * columns - GAME_LEFT_X 0 width GAME_SEAT_W 68 (ends 68) and GAME_RIGHT_X
+ * (starts 252) - so 72..248 is the widest the panels can be while keeping the
+ * 4 px COUP_BG_GRID gutter that draws every panel's border. The panels now
+ * take exactly that, and the inner 4 px inset is the ONLY one.
+ *
+ * The 8 px this recovers is one character, and it is load-bearing: the
+ * select-target row is cursor + 15-char name + " $" + 3-digit coins = 21
+ * characters = 168 px, which fits 72..248 with a 4 px margin and does NOT fit
+ * the old 76..244. */
+#define GAME_CONTENT_X        GAME_CENTER_X                            /* 72  */
+#define GAME_CONTENT_W        GAME_CENTER_W                            /* 176 */
+#define GAME_TEXT_X          (GAME_CONTENT_X + COUP_ITEM_TEXT_INSET)   /* 76  */
 #define GAME_CONTENT_Y       (GAME_ROW_Y + 2)                         /* 58  */
-#define GAME_TITLE_MAX_CHARS 20  /* max chars fitting in content area: (GAME_CONTENT_X + GAME_CONTENT_W - GAME_TEXT_X) / 8 */
+/* Characters of the body face that fit between the text inset and the panel's
+ * far margin: (GAME_CONTENT_X + GAME_CONTENT_W - COUP_ITEM_TEXT_INSET
+ * - GAME_TEXT_X) / COUP_FONT_ADVANCE = (72 + 176 - 4 - 76) / 8 = 21.
+ * This is the WRAP WIDTH for phase titles, not a truncation length. */
+#define GAME_TITLE_MAX_CHARS 21
 
 /* Derived panel heights (auto-adjust when anchors change) */
 #define GAME_LOG_H           (GAME_ROW_Y - 2)                         /* 54  */
@@ -348,7 +387,14 @@ typedef struct {
     int left_coins_inset;  /* Left seats: coins x inset from box edge */
     int right_cards_inset; /* Right seats: cards x inset from box edge */
     int card_spacing;      /* Horizontal space between card abbreviations */
-    int max_name_chars;    /* Max chars for name in seat */
+    /* No max_name_chars. The seat used to copy the name through
+     * safe_copy(.., max_name_chars + 1) and show the first 8 characters, so
+     * two players called "Bartholomew1" and "Bartholomew2" appeared as the
+     * same person. The seat box is GAME_SEAT_W = 68 px and a 15-character
+     * name is 120 px in the body face, so it cannot be made to fit by moving
+     * anything - the name is one token and cannot wrap either. It is drawn in
+     * COUP_FONT_CONDENSED instead: 15 chars = (15-1)*4 + 8 = 64 px, inside
+     * the 64 px between the 4 px text inset and the box edge. */
 } coup_seats_layout_t;
 
 /* Phase: select action */
@@ -688,7 +734,6 @@ static const coup_ui_t __attribute__((unused)) COUP_UI = {
             .left_coins_inset = 44,
             .right_cards_inset = 28,
             .card_spacing     = 24,
-            .max_name_chars   = 8,
         },
         /* Player hand (center-bottom, flush to screen bottom) */
         .hand = {
@@ -748,13 +793,20 @@ static const coup_ui_t __attribute__((unused)) COUP_UI = {
         .challenge_wait  = GAME_RESPONSE_LAYOUT,
         .block_wait      = GAME_RESPONSE_LAYOUT,
         .block_challenge = GAME_RESPONSE_LAYOUT,
-        /* Phase: idle/resolving */
+        /* Phase: idle/resolving.
+         *
+         * TWO text rows, not one. "Waiting for <name>..." is 11 + 15 + 3 = 29
+         * characters with a full-length name = 232 px, and no panel in the
+         * centre column is wider than 176. It is wrapped at the space before
+         * the name instead of being cut, so the panel needs a second row: 24
+         * -> 38 px tall, with the progress bar moved below both rows. It sits
+         * at y=58 inside center_panel (56..148), so 58 + 38 = 96 clears it. */
         .idle = {
-            .panel     = {GAME_CONTENT_X, GAME_CONTENT_Y, GAME_CONTENT_W, 24},
+            .panel     = {GAME_CONTENT_X, GAME_CONTENT_Y, GAME_CONTENT_W, 38},
             .text_x    = GAME_TEXT_X,
             .text_y    = GAME_CONTENT_Y + 6,
             .bar_x     = GAME_TEXT_X,
-            .bar_y     = GAME_CONTENT_Y + 18,
+            .bar_y     = GAME_CONTENT_Y + 26,
             .bar_max_w = GAME_CONTENT_W - 8,
             .bar_h     = 4,
         },

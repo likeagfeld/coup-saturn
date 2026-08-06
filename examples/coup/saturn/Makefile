@@ -114,6 +114,9 @@ SRCS += $(PAL_SATURN)/saturn_rbg0.c
 SRCS += $(PAL_SATURN)/fonts/saturn_font_alagard_16x16.c
 SRCS += $(PAL_SATURN)/fonts/saturn_font_alagard_8x8.c
 SRCS += $(PAL_SATURN)/fonts/saturn_font_coup_8x8.c
+# COUP_FONT_CONDENSED: same 8x8 cell, half the advance. Carries the log/recap
+# rows and the two name slots that no 8 px face can fit (coup_ui.h).
+SRCS += $(PAL_SATURN)/fonts/saturn_font_buch_4x6.c
 
 # Object files in build subdirectory
 OBJS = $(addprefix $(BUILD)/,$(notdir $(SRCS:.c=.o)))

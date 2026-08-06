@@ -234,55 +234,38 @@ int coup_centre_x(int container_w, int text_w)
     return x < 0 ? 0 : x;
 }
 
-/* Longest string draw_text_fit() will consider. The widest thing that reaches
- * it is a log line, COUP_LOG_LINE_LEN + 1 = 40 bytes. */
-#define COUP_FIT_MAX 48
-
 /**
- * Draw `text` at (x, y), trimmed to the last WHOLE character that still ends
- * at or before `right_edge`.
+ * Draw `text` at (x, y) in an EXPLICIT face, restoring the previous one.
  *
- * For the text whose content is not known when the layout is written: log
- * lines, player names, anything from the wire. Those are bounded in
- * CHARACTERS by coup.h (COUP_LOG_LINE_LEN, COUP_MAX_NAME) and the bound is
- * generous - a 39-character log line is 312 px, and the boxes it is drawn in
- * are 256 to 258 px wide. So every log view drew past its own panel, and the
- * game-over recap and the connecting screen drew past the 320 px SCREEN as
- * well. Reported as text extending past its box and outside the lines.
+ * This replaces draw_text_fit(), which trimmed a label to its container. The
+ * two are not variations on a theme - one shows the label and one does not,
+ * and a player shown "Bartholom" has not been shown their name. Where a label
+ * genuinely cannot be made to fit by moving its box or wrapping it, it is
+ * drawn smaller here rather than shortened. coup_ui.h's COUP_FONT_CONDENSED
+ * carries the measurement for why that is the only remaining option for a
+ * 39-character log line on a 320 px screen.
  *
- * Trimming here rather than lowering COUP_LOG_LINE_LEN because the three log
- * views have three different widths: the game log has 302 px to play with,
- * the recap 254 and the connecting panel 252. One shared character cap would
- * have to be the smallest of those, and would throw away text the widest view
- * has room for. This is presentation, so it belongs in the renderer.
- *
- * The budget is measured with text_px_w(), the same function the centring
- * helpers use, so it is correct for whichever font is ACTIVE. A budget
- * computed as (right_edge - x) / COUP_FONT_ADVANCE would be one character
- * optimistic in the display face, whose cell is 16 px on an 8 px advance.
+ * Off-Saturn there is no font registry, so the face argument is ignored and
+ * the label is drawn as before - which is correct, because the SDL/host build
+ * is not what the 320 px budget is about.
  */
-static void draw_text_fit(int x, int y, int right_edge, const char* text,
-                          uint32_t color)
+static void draw_text_font(int x, int y, const char* text, uint32_t color,
+                           int font)
 {
-    static char buf[COUP_FIT_MAX];
-    int avail = right_edge - x;
-    int n = 0;
-
-    if (!text || avail <= 0) {
+    if (!text) {
         return;
     }
-    while (text[n] != '\0' && n < COUP_FIT_MAX - 1) {
-        buf[n] = text[n];
-        n++;
+#ifdef __SATURN__
+    {
+        int prev = cui_saturn_font_get_active();
+        cui_saturn_font_set_active(font);
+        CUI_DISPLAY()->draw_text_sprite(x, y, text, color);
+        cui_saturn_font_set_active(prev);
     }
-    buf[n] = '\0';
-    while (n > 0 && text_px_w(buf) > avail) {
-        n--;
-        buf[n] = '\0';
-    }
-    if (n > 0) {
-        CUI_DISPLAY()->draw_text_sprite(x, y, buf, color);
-    }
+#else
+    (void)font;
+    CUI_DISPLAY()->draw_text_sprite(x, y, text, color);
+#endif
 }
 
 /**
@@ -701,16 +684,92 @@ int coup_log_ring_index(int head, int count, int max_rows, int scroll, int row)
     return (head + chrono) % COUP_LOG_LINES;
 }
 
-static int safe_copy(char* dst, const char* src, int max_len)
+int coup_wrap_row(const char* src, int max_chars, int row,
+                  char* out, int out_sz)
 {
-    int i = 0;
-    while (i < max_len - 1 && src[i] != '\0') {
-        dst[i] = src[i];
-        i++;
+    int start = 0;      /* first char of the row being measured */
+    int r = 0;
+
+    if (out && out_sz > 0) {
+        out[0] = '\0';
     }
-    dst[i] = '\0';
-    return i;
+    if (!src || !out || out_sz <= 0 || max_chars <= 0 || row < 0) {
+        return 0;
+    }
+
+    for (;;) {
+        int end;        /* one past the last char that goes on this row */
+        int next;       /* first char of the following row */
+        int i;
+        int n;
+
+        /* Leading spaces belong to the break, not to the next row. */
+        while (src[start] == ' ') {
+            start++;
+        }
+        if (src[start] == '\0') {
+            return 0;   /* asked for a row past the end of the text */
+        }
+
+        /* Greedy: take whole words while they still fit. `end` tracks the
+         * last position that is a legal break - a break INSIDE a word would
+         * be a truncation wearing a different hat, so a word that cannot fit
+         * is emitted alone and allowed to be wide. No bounded caller can
+         * reach that: the widest single token any of them builds is a
+         * COUP_MAX_NAME-1 name plus a colon, 16 characters, against a wrap
+         * width of GAME_TITLE_MAX_CHARS = 21. */
+        end = start;
+        i = start;
+        while (src[i] != '\0') {
+            int word_end = i;
+            while (src[word_end] != '\0' && src[word_end] != ' ') {
+                word_end++;
+            }
+            if (word_end - start > max_chars && end > start) {
+                break;             /* this word overruns; break before it */
+            }
+            end = word_end;
+            if (src[word_end] == '\0') {
+                break;
+            }
+            if (word_end - start >= max_chars) {
+                break;
+            }
+            i = word_end + 1;      /* step over the space to the next word */
+        }
+        if (end == start) {        /* a single over-long token */
+            end = start;
+            while (src[end] != '\0' && src[end] != ' ') {
+                end++;
+            }
+        }
+        next = end;
+
+        if (r == row) {
+            n = end - start;
+            if (n > out_sz - 1) {
+                n = out_sz - 1;
+            }
+            for (i = 0; i < n; i++) {
+                out[i] = src[start + i];
+            }
+            out[n] = '\0';
+            return n;
+        }
+
+        r++;
+        start = next;
+    }
 }
+
+/* safe_copy() lived here. It was the renderer's third way of shortening a
+ * label - a bounded copy into a display buffer, which is a truncation whose
+ * length happens to be written in the declaration instead of in the format
+ * string. Its three callers (the seat name and two phase titles) now show the
+ * whole text: the names in COUP_FONT_CONDENSED, the titles wrapped by
+ * coup_wrap_row(). Deleted rather than left unused so it cannot be reached
+ * for again; a genuinely bounded copy belongs in the game layer next to
+ * coup_log(), which owns COUP_LOG_LINE_LEN. */
 
 /*============================================================================
  * Action effects
@@ -1749,13 +1808,20 @@ static void coup_render_connecting(const coup_state_t* st)
             if (idx < 0) {
                 continue;
             }
-            /* Trimmed to the panel. A full-length log line is 39 characters
-             * = 312 px from x=40, ending at 352: 56 px past this panel's
-             * right edge at 296 and 32 px past the screen itself. */
-            draw_text_fit(L->log_list.x,
-                          L->log_list.base_y + li * L->log_list.spacing,
-                          L->main_panel.x + L->main_panel.w - 4,
-                          st->log[idx], COUP_TEXT_GRAY);
+            /* Drawn WHOLE, in the condensed face. A full-length log line is
+             * 39 characters: 312 px in the body face, which from x=40 ends
+             * at 352 - 56 px past this panel's right edge at 296 and 32 px
+             * past the screen itself. This panel cannot be widened to 312 px
+             * of usable width (that would need the entire 320 px screen with
+             * no border), and these rows are a modem-status list with no
+             * vertical room to wrap into - the four of them run 120..158 and
+             * the cancel plate starts at 164. In COUP_FONT_CONDENSED the same
+             * line is (39-1)*4 + 8 = 160 px, ending at 200, well inside the
+             * panel, with every character present. */
+            draw_text_font(L->log_list.x,
+                           L->log_list.base_y + li * L->log_list.spacing,
+                           st->log[idx], COUP_TEXT_GRAY,
+                           COUP_FONT_CONDENSED);
         }
     }
 
@@ -2166,7 +2232,6 @@ static void render_single_seat(const coup_seat_layout_t* seat,
                                const coup_state_t* st,
                                const coup_player_t* p)
 {
-    char name_part[16];
     char coin_str[8];
     uint32_t bg_color, name_color;
     const char* c0;
@@ -2248,9 +2313,20 @@ static void render_single_seat(const coup_seat_layout_t* seat,
                   bg_color, grd);
     }
 
-    /* Name (truncate to max_name_chars) */
-    safe_copy(name_part, p->name, layout->max_name_chars + 1);
-    CUI_DISPLAY()->draw_text_sprite(seat->name_x, seat->name_y, name_part, name_color);
+    /* Name, WHOLE. This used to copy through safe_copy(.., max_name_chars+1)
+     * and show the first eight characters, so "Bartholomew1" and
+     * "Bartholomew2" were the same player as far as the table was concerned.
+     *
+     * The seat box is GAME_SEAT_W = 68 px and cannot grow - six of them tile
+     * the left and right screen edges around the 176 px centre column, and
+     * 2*68 + 176 + two 4 px gutters is the whole 320. A 15-character name is
+     * 120 px in the body face and is one token, so neither widening nor
+     * wrapping applies. In COUP_FONT_CONDENSED it is (15-1)*4 + 8 = 64 px,
+     * which is exactly the span from the 4 px text inset to the box edge -
+     * and the last glyph's ink occupies only the left half of its 8 px cell,
+     * so the visible name ends ~4 px inside the box. */
+    draw_text_font(seat->name_x, seat->name_y, p->name, name_color,
+                   COUP_FONT_CONDENSED);
 
     /* Card abbreviations */
     if (!p->alive) {
@@ -2328,6 +2404,27 @@ static void render_seats(const coup_state_t* st)
 
 /* ----- Reusable selection list helper ----- */
 
+/**
+ * Rows a phase title occupies once wrapped: 1, or 2 when it does not fit.
+ *
+ * The title bar, the item list and the timer bar all have to agree about
+ * this, or a two-row title paints over the first action. Derived from the
+ * title itself so there is nothing to keep in sync by hand.
+ */
+static int title_rows(const char* title)
+{
+    char row[GAME_TITLE_MAX_CHARS + 1];
+    return coup_wrap_row(title, GAME_TITLE_MAX_CHARS, 1, row,
+                         sizeof(row)) > 0 ? 2 : 1;
+}
+
+/* Extra pixels the list and the timer bar drop by when the title wraps. */
+static int title_extra_y(const char* title)
+{
+    return (title_rows(title) - 1) * COUP_FONT_ROW_H;
+}
+
+
 typedef struct {
     const char* label;   /* e.g. "Block with Duke" */
     uint32_t    color;   /* text color */
@@ -2349,17 +2446,38 @@ static void render_selection_list(
 {
     int i;
     char line[48];
-    char title_buf[GAME_TITLE_MAX_CHARS + 1];
+    char row[GAME_TITLE_MAX_CHARS + 1];
     bool multi = (hint != NULL);
+    int rows = title_rows(title);
+    int extra = title_extra_y(title);
 
-    /* Title bar */
-    panel_r(layout->title_bar, COUP_PANEL_HEADER);
+    /* Title bar, WRAPPED rather than clipped.
+     *
+     * This used to safe_copy() the title into a GAME_TITLE_MAX_CHARS buffer,
+     * which silently cut "<name> blocks w/ Ambassador" - 36 characters with a
+     * full-length name - down to 21, on top of the %.10s the callers were
+     * already applying to the name. Two truncations stacked on one label.
+     *
+     * The panel grows with the text instead: 12 px for one row, 22 for two.
+     * tests/coup/test_text_wrap.c proves exhaustively that no reachable title
+     * needs a third row, so the item list below can shift by a known amount. */
+    panel(layout->title_bar.x, layout->title_bar.y, layout->title_bar.w,
+          layout->title_bar.h + extra, COUP_PANEL_HEADER);
     hline(layout->title_bar.x, layout->title_bar.y, layout->title_bar.w, accent_color);
-    safe_copy(title_buf, title, sizeof(title_buf));
-    CUI_DISPLAY()->draw_text_sprite(layout->title_text_x, layout->title_text_y, title_buf, title_color);
+    for (i = 0; i < rows; i++) {
+        if (coup_wrap_row(title, GAME_TITLE_MAX_CHARS, i, row,
+                          sizeof(row)) <= 0) {
+            break;
+        }
+        CUI_DISPLAY()->draw_text_sprite(layout->title_text_x,
+                                        layout->title_text_y
+                                            + i * COUP_FONT_ROW_H,
+                                        row, title_color);
+    }
 
     for (i = 0; i < count; i++) {
-        int py = layout->action_start_y + layout->items_offset_y + i * layout->item_spacing;
+        int py = layout->action_start_y + layout->items_offset_y
+                 + i * layout->item_spacing + extra;
         bool at_cursor = (i == cursor);
         uint32_t color = items[i].color;
         const char* cur = at_cursor ? ">" : " ";
@@ -2388,7 +2506,8 @@ static void render_selection_list(
     }
 
     if (hint) {
-        int hy = layout->action_start_y + layout->items_offset_y + count * layout->item_spacing + 4;
+        int hy = layout->action_start_y + layout->items_offset_y
+                 + count * layout->item_spacing + 4 + extra;
         CUI_DISPLAY()->draw_text_sprite(layout->title_text_x, hy, hint, COUP_TEXT_GRAY);
     }
 }
@@ -2396,11 +2515,13 @@ static void render_selection_list(
 /* ----- Timer countdown bar helper ----- */
 
 static void render_timer_bar(const coup_phase_select_action_t* layout,
+                             const char* title,
                              int item_count, int timer, int total,
                              uint32_t color)
 {
     int bar_y = layout->action_start_y + layout->items_offset_y
-                + item_count * layout->item_spacing;
+                + item_count * layout->item_spacing
+                + title_extra_y(title);
     int bar_w;
     if (total <= 0) return;
     bar_w = (timer * layout->item_w) / total;
@@ -2474,7 +2595,6 @@ static void render_phase_select_target(const coup_state_t* st)
 {
     const coup_phase_select_target_t* ST = &COUP_UI.game.select_target;
     char line[48];
-    char title_buf[GAME_TITLE_MAX_CHARS + 1];
     int opp_idx = 0;
     int i;
     const char* act_name = (st->declared_action < COUP_NUM_ACTIONS)
@@ -2482,9 +2602,13 @@ static void render_phase_select_target(const coup_state_t* st)
 
     panel_r(ST->title_bar, COUP_PANEL_HEADER);
     hline(ST->title_bar.x, ST->title_bar.y, ST->title_bar.w, COUP_ACCENT_BLUE);
+    /* No safe_copy() into a GAME_TITLE_MAX_CHARS buffer any more. The widest
+     * this title gets is the longest action name (11, "Assassinate") plus
+     * " - Target:" (10) = 21 characters = 168 px, which from title_text_x 76
+     * ends at 244 inside the widened 72..248 title bar. It is measured, so it
+     * does not need a clip to defend it. */
     snprintf(line, sizeof(line), "%s - Target:", act_name);
-    safe_copy(title_buf, line, sizeof(title_buf));
-    CUI_DISPLAY()->draw_text_sprite(ST->title_text_x, ST->title_text_y, title_buf, COUP_TEXT_YELLOW);
+    CUI_DISPLAY()->draw_text_sprite(ST->title_text_x, ST->title_text_y, line, COUP_TEXT_YELLOW);
 
     for (i = 0; i < st->player_count; i++) {
         const coup_player_t* p = &st->players[i];
@@ -2502,13 +2626,21 @@ static void render_phase_select_target(const coup_state_t* st)
             panel(ST->item_x, py, ST->item_w, ST->item_h, COUP_PANEL_PROMPT);
         }
 
-        /* %-10.10s, not %-12s. A width PADS, it does not truncate, so a
-         * 15-character name made this row 23 characters = 184 px starting at
-         * 80, ending at 264 - 20 px past the 76..244 item plate it is
-         * highlighted on. The precision caps the name at 10 and the width
-         * keeps the "$n" column aligned, so the row is at most 18 characters
-         * = 144 px whatever the player is called. */
-        snprintf(line, sizeof(line), " %s %-10.10s $%d", cursor, p->name,
+        /* %-15s - a WIDTH, which pads and never cuts. COUP_MAX_NAME is 16, so
+         * 15 is the longest name there can be and the field is exactly big
+         * enough to hold any of them while keeping the "$n" column aligned.
+         * The old %-10.10s carried a PRECISION as well, which is what threw
+         * away everything past the tenth character.
+         *
+         * The row is now cursor(1) + name(15) + " $"(2) + coins(3) = 21
+         * characters = 168 px. It fits because the item plate was WIDENED:
+         * the phase column moved from 76..244 to 72..248 (coup_ui.h,
+         * GAME_CONTENT_X), so from the 4 px text inset at 76 the row ends at
+         * 244 with a 4 px margin. At the old width it would have needed 244
+         * and had 160. The space that used to sit between the cursor and the
+         * name is what paid for the extra digit of coins - it was indentation,
+         * which COUP_ITEM_TEXT_INSET already provides, not content. */
+        snprintf(line, sizeof(line), "%s%-15s $%d", cursor, p->name,
                  p->coins);
         CUI_DISPLAY()->draw_text_sprite(ST->item_x + COUP_ITEM_TEXT_INSET,
                                         py + ST->item_text_offset_y, line,
@@ -2541,7 +2673,7 @@ static void render_phase_challenge_wait(const coup_state_t* st)
     }
     claim_name = (st->declared_claim < COUP_NUM_CHARACTERS)
                   ? coup_char_names[st->declared_claim] : "???";
-    snprintf(title, sizeof(title), "%.10s claims %s", actor_name, claim_name);
+    snprintf(title, sizeof(title), "%s claims %s", actor_name, claim_name);
 
     items[0].label = "Allow";
     items[0].color = COUP_TEXT_WHITE;
@@ -2550,7 +2682,8 @@ static void render_phase_challenge_wait(const coup_state_t* st)
 
     render_selection_list(SA, title, COUP_TEXT_YELLOW, COUP_ACCENT_RED,
                           items, 2, st->menu_cursor, NULL);
-    render_timer_bar(SA, 2, st->response_timer, st->response_timeout, COUP_ACCENT_RED);
+    render_timer_bar(SA, title, 2, st->response_timer, st->response_timeout,
+                     COUP_ACCENT_RED);
 }
 
 static void render_phase_block_wait(const coup_state_t* st)
@@ -2574,9 +2707,9 @@ static void render_phase_block_wait(const coup_state_t* st)
                 ? coup_action_names[st->declared_action] : "???";
 
     if (st->declared_action == COUP_ACT_FOREIGN_AID) {
-        snprintf(title, sizeof(title), "%.10s: Foreign Aid", actor_name);
+        snprintf(title, sizeof(title), "%s: Foreign Aid", actor_name);
     } else {
-        snprintf(title, sizeof(title), "%.10s: %s", actor_name, act_name);
+        snprintf(title, sizeof(title), "%s: %s", actor_name, act_name);
     }
 
     items[0].label = "Allow";
@@ -2592,7 +2725,8 @@ static void render_phase_block_wait(const coup_state_t* st)
 
     render_selection_list(SA, title, COUP_TEXT_YELLOW, COUP_ACCENT_RED,
                           items, count, st->menu_cursor, NULL);
-    render_timer_bar(SA, count, st->response_timer, st->response_timeout, COUP_ACCENT_RED);
+    render_timer_bar(SA, title, count, st->response_timer, st->response_timeout,
+                     COUP_ACCENT_RED);
 }
 
 static void render_phase_block_challenge(const coup_state_t* st)
@@ -2612,7 +2746,7 @@ static void render_phase_block_challenge(const coup_state_t* st)
     }
     block_char_name = (st->block_claim < COUP_NUM_CHARACTERS)
                        ? coup_char_names[st->block_claim] : "???";
-    snprintf(title, sizeof(title), "%.10s blocks w/ %s", blocker_name, block_char_name);
+    snprintf(title, sizeof(title), "%s blocks w/ %s", blocker_name, block_char_name);
 
     items[0].label = "Allow";
     items[0].color = COUP_TEXT_WHITE;
@@ -2621,7 +2755,8 @@ static void render_phase_block_challenge(const coup_state_t* st)
 
     render_selection_list(SA, title, COUP_TEXT_YELLOW, COUP_ACCENT_PURPLE,
                           items, 2, st->menu_cursor, NULL);
-    render_timer_bar(SA, 2, st->response_timer, st->response_timeout, COUP_ACCENT_PURPLE);
+    render_timer_bar(SA, title, 2, st->response_timer, st->response_timeout,
+                     COUP_ACCENT_PURPLE);
 }
 
 static void render_phase_lose_influence(const coup_state_t* st)
@@ -2717,24 +2852,42 @@ static void render_phase_idle_resolving(const coup_state_t* st)
         }
     }
     is_my_turn = (st->my_id == st->current_turn_id);
-    /* Both lines SHORTENED to fit the idle panel, which is GAME_CONTENT_W =
-     * 168 px wide at x=76 with its text inset to 80 - 164 px, or 20
-     * characters of the body face.
+    /* WRAPPED onto a second row, not shortened. Both of these lines are back
+     * to their original wording:
      *
-     *   "Waiting for decision..."  was 23 chars = 184 px, ending at 264
-     *   "Waiting for %s..."        was 30 chars with a full-length name,
-     *                              240 px, ending at 320 - 76 px past the
-     *                              panel and hard against the screen edge
+     *   "Waiting for decision..."  23 chars = 184 px in the body face
+     *   "Waiting for <name>..."    29 chars with a 15-character name = 232 px
      *
-     * The name is now bounded by the format itself (%.8s), the same
-     * eight-character budget the opponent seats give a name
-     * (coup_seats_layout_t.max_name_chars), so the two agree. */
-    if (is_my_turn) {
-        snprintf(line, sizeof(line), "Awaiting decision");
-        CUI_DISPLAY()->draw_text_sprite(ID->text_x, ID->text_y, line, COUP_TEXT_GREEN);
-    } else {
-        snprintf(line, sizeof(line), "Waiting: %.8s...", turn_name);
-        CUI_DISPLAY()->draw_text_sprite(ID->text_x, ID->text_y, line, COUP_TEXT_GRAY);
+     * against 168 px of usable width in the centre column - which is as wide
+     * as any panel there can be, the seat columns owning everything outside
+     * 72..248. So neither fits on one row and neither needs to: there is
+     * plenty of VERTICAL room (the idle panel is 38 px inside a 92 px centre
+     * panel), and both lines break cleanly at a space. The earlier
+     * "Awaiting decision" and "Waiting: %.8s..." were the two casualties of
+     * fitting them horizontally instead; the name in particular was cut to
+     * eight characters.
+     *
+     * coup_wrap_row() breaks on spaces only and is proved never to need more
+     * than two rows for any reachable name in tests/coup/test_text_wrap.c. */
+    {
+        char row[GAME_TITLE_MAX_CHARS + 1];
+        uint32_t color = is_my_turn ? COUP_TEXT_GREEN : COUP_TEXT_GRAY;
+        int r;
+
+        if (is_my_turn) {
+            snprintf(line, sizeof(line), "Waiting for decision...");
+        } else {
+            snprintf(line, sizeof(line), "Waiting for %s...", turn_name);
+        }
+        for (r = 0; r < 2; r++) {
+            if (coup_wrap_row(line, GAME_TITLE_MAX_CHARS, r, row,
+                              sizeof(row)) <= 0) {
+                break;
+            }
+            CUI_DISPLAY()->draw_text_sprite(ID->text_x,
+                                            ID->text_y + r * COUP_FONT_ROW_H,
+                                            row, color);
+        }
     }
 }
 
@@ -2759,11 +2912,19 @@ static void render_your_hand(const coup_state_t* st)
      * art. coup_ui.h says as much at .card0_x ("a 72 px gap in the middle,
      * which the name and coin counter already fit"), which was true of "YOU"
      * and not of a 15-character name: that one ran to 248, 52 px into card 1.
-     * Trimmed to the gap, giving the same eight characters the opponent seats
-     * allow. */
+     *
+     * Drawn WHOLE in the condensed face, because neither of the other two
+     * strategies can reach it. WIDENING: the gap is bounded by the panel
+     * itself - GAME_CENTER_W 176 minus two 48 px card faces is 80 px even
+     * with the cards pushed flush to both panel edges, against 120 px for a
+     * 15-character name in any 8 px face - and the cards cannot move
+     * vertically either, being 72 px tall in a 74 px panel. WRAPPING: a name
+     * is a single token, and coup_wrap_row() will not break inside a word
+     * because that is just truncation again. In COUP_FONT_CONDENSED the name
+     * is (15-1)*4 + 8 = 64 px, ending at 192, clear of the card by 4 px. */
     if (!self->alive) {
-        draw_text_fit(H->name_x, H->name_y, H->card1_x - 4, self->name,
-                      COUP_TEXT_GRAY);
+        draw_text_font(H->name_x, H->name_y, self->name, COUP_TEXT_GRAY,
+                       COUP_FONT_CONDENSED);
         CUI_DISPLAY()->draw_text_sprite(H->coins_x, H->coins_y, "DEAD", COUP_TEXT_RED);
         return;
     }
@@ -2771,8 +2932,8 @@ static void render_your_hand(const coup_state_t* st)
     /* Player name (green highlight when it's our turn) */
     {
         uint32_t name_color = is_my_turn ? COUP_TEXT_GREEN : COUP_TEXT_WHITE;
-        draw_text_fit(H->name_x, H->name_y, H->card1_x - 4, self->name,
-                      name_color);
+        draw_text_font(H->name_x, H->name_y, self->name, name_color,
+                       COUP_FONT_CONDENSED);
     }
 
     /* Card 0 */
@@ -2920,14 +3081,23 @@ static void render_game_log(const coup_state_t* st)
 
         age = visible_lines - 1 - i;
         log_color = (age == 0 && scroll == 0) ? COUP_TEXT_WHITE : COUP_TEXT_GRAY;
-        /* Trimmed to clear the scroll arrow. This view has the whole 320 px
-         * to itself, so a 39-character line at x=4 ends at 316 and stays on
-         * screen - but the arrow drawn above is at scroll_arrow_x = 308, and
-         * the line's last character occupies exactly 308..316. The two were
-         * printed on top of each other whenever the log was long enough to
-         * scroll, which is precisely when the arrow matters. */
-        draw_text_fit(GL->text_x, py, GL->scroll_arrow_x - 2,
-                      st->log[ring_idx], log_color);
+        /* Drawn WHOLE, in the condensed face.
+         *
+         * This is the view that proves widening cannot solve the 39-character
+         * case. Its panel is ALREADY {0, 0, 320, 54} - the widest a panel on
+         * this machine can be - and it still does not work: a 39-character
+         * line in the body face is 312 px, so from x=4 it ends at 316, while
+         * the scroll arrow sits at scroll_arrow_x = 308 and occupies 308..316.
+         * 4 + 312 + 8 = 324 > 320. There is no arrangement of a full-width
+         * panel, a 4 px margin, a full line and an arrow that fits, which is
+         * why the previous pass reached for a trim.
+         *
+         * In COUP_FONT_CONDENSED the line is 160 px and ends at 164, clearing
+         * the arrow by 144 px, with all 39 characters on screen. The row
+         * pitch is unchanged: this face has the same 8x8 cell as the body
+         * face and only halves the advance. */
+        draw_text_font(GL->text_x, py, st->log[ring_idx], log_color,
+                       COUP_FONT_CONDENSED);
     }
 }
 
@@ -3230,14 +3400,18 @@ static void coup_render_game_over(const coup_state_t* st)
                 CUI_DISPLAY()->draw_text_sprite(panel_x + 4, y, ">",
                                                 COUP_TEXT_GOLD);
             }
-            /* Trimmed to the recap panel. The rows start at panel_x + 14 to
-             * clear the ">" marker column, so a 39-character line ran from 38
-             * to 350 - 54 px past the panel's right edge at 296, and 30 px
-             * past the screen. This is the game-over screen every offline
-             * match ends on, so it is the overflow that gets seen most. */
-            draw_text_fit(panel_x + 14, y, panel_x + panel_w - 4,
-                          st->log[idx],
-                          last ? COUP_TEXT_GOLD : COUP_TEXT_GRAY);
+            /* Drawn WHOLE, in the condensed face. The rows start at
+             * panel_x + 14 to clear the ">" marker column, so a 39-character
+             * line in the body face ran from 38 to 350 - 54 px past the
+             * panel's right edge at 296, and 30 px past the screen. Widening
+             * cannot recover that: 14 px of marker column plus 312 px of line
+             * needs 326 px before any border. In COUP_FONT_CONDENSED the line
+             * is 160 px, ending at 198, inside the panel with 98 px to spare
+             * and the marker column intact. This is the screen every offline
+             * match ends on, so it is the one whose text gets read most. */
+            draw_text_font(panel_x + 14, y, st->log[idx],
+                           last ? COUP_TEXT_GOLD : COUP_TEXT_GRAY,
+                           COUP_FONT_CONDENSED);
         }
 
         if (total > max_rows) {

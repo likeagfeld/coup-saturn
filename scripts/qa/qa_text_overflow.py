@@ -36,6 +36,7 @@ WIDTH IS NOT length * 8  (MEASURED)
       alagard_16x16   cell_width 16, advance_x 8     <- COUP_FONT_DISPLAY
       alagard_8x8     cell_width  8, advance_x 8
       coup_8x8        cell_width  8, advance_x 8     <- COUP_FONT_BODY
+      buch_4x6        cell_width  8, advance_x 4     <- COUP_FONT_CONDENSED
   coup_render.c's text_px_w() therefore returns
 
       (n - 1) * advance + cell
@@ -52,7 +53,7 @@ FOUR DRAW CALLS, FOUR DIFFERENT ORIGINS
   draw_centered(row, ...)            x = centre of the 320px SCREEN
   draw_centered_in(x, w, y, ...)     x = x + centre within w
   button_centered(x, y, w, h, ...)   x = x + centre within w, in ITS font
-  draw_text_fit(x, y, right, ...)    x = x, truncated to `right` at draw time
+  draw_text_font(x, y, text, c, f)   x = x, WHOLE label, in the face `f`
   Treating these as one shape is how an audit gets a wrong answer that looks
   right.
 
@@ -528,6 +529,10 @@ def read_fonts(root):
       1  COUP_FONT_DISPLAY        alagard 16x16
       2  COUP_FONT_ALAGARD        alagard 8x8
       3  COUP_FONT_BODY           coup 8x8
+      4  COUP_FONT_CONDENSED      buch 4x6 - same 8 px CELL, HALF the
+                                  advance, so it is the only face in which a
+                                  39-character log line (160 px) fits a
+                                  container that also has a border.
     """
     def desc(path):
         if not os.path.exists(path):
@@ -544,6 +549,7 @@ def read_fonts(root):
         1: desc(os.path.join(root, "saturn_font_alagard_16x16.c")),
         2: desc(os.path.join(root, "saturn_font_alagard_8x8.c")),
         3: desc(os.path.join(root, "saturn_font_coup_8x8.c")),
+        4: desc(os.path.join(root, "saturn_font_buch_4x6.c")),
     }
     return {k: v for k, v in fonts.items() if v}
 
@@ -588,7 +594,19 @@ def arg_bounds(macros):
         "self->name": name_max,
         "winner_name": name_max,
         "st->winner_name": name_max,
-        "name_part": 8,          # safe_copy(.., max_name_chars + 1) = 8 chars
+        # A wrapped row. coup_wrap_row() breaks on spaces only and writes at
+        # most `max_chars` characters into a `char row[GAME_TITLE_MAX_CHARS+1]`
+        # - every caller passes GAME_TITLE_MAX_CHARS as the width, and the
+        # buffer is declared from the same macro, so the two cannot drift.
+        #
+        # The one case that could exceed it is a single token longer than the
+        # wrap width, which is emitted whole rather than split (splitting a
+        # word would be the truncation this whole change removes). No caller
+        # can build one: tests/coup/test_text_wrap.c walks every name length
+        # COUP_MAX_NAME allows against every character and action name for all
+        # four title formats - 270 reachable titles - and requires each to
+        # wrap into at most 2 rows of at most GAME_TITLE_MAX_CHARS.
+        "row": macros_int(macros, "GAME_TITLE_MAX_CHARS") or 21,
         # Log ring: coup.h COUP_LOG_LINE_LEN, enforced by coup_log()'s copy.
         "st->log[idx]": log_max,
         "st->log[ring_idx]": log_max,
@@ -812,7 +830,7 @@ PARAM_LAYOUT = {
 # ===========================================================================
 
 TEXT_CALLS = ("draw_at", "draw_centered", "draw_centered_in",
-              "button_centered", "draw_text_fit", "draw_text_sprite")
+              "button_centered", "draw_text_font", "draw_text_sprite")
 
 PANEL_CALLS = ("panel", "panel_grd", "panel_lit")
 
@@ -823,7 +841,7 @@ MIN_CONTAINER_W = 16
 # The generic draw helpers at the top of coup_render.c are plumbing, not
 # screens: draw_at() forwards to draw_text_sprite() with no label of its own.
 HELPERS = ("draw_at", "draw_centered", "draw_centered_in", "button_centered",
-           "draw_text_fit", "panel", "panel_r", "panel_lit", "panel_grd",
+           "draw_text_font", "panel", "panel_r", "panel_lit", "panel_grd",
            "hline", "vline", "screen_bg")
 
 
@@ -1527,24 +1545,35 @@ class Analyser(object):
             s.container = ("its own plate", bx, bw)
             return s
 
-        if kind == "draw_text_fit":
-            if len(a) < 4:
+        if kind == "draw_text_font":
+            # draw_text_font(x, y, text, color, font) - the whole label, in an
+            # EXPLICIT face. Replaced draw_text_fit(), which drew as much of
+            # the label as fitted and measured only what it drew; this one
+            # draws every character, so `n` is the real character count and
+            # the width is whatever that costs in the face NAMED AT THE CALL.
+            #
+            # Taking the face from argument 4 rather than from the ambient
+            # cui_saturn_font_set_active() tracking is the point: the helper
+            # sets and restores the face around a single draw, so the ambient
+            # font at the call site is the BODY face and measuring in it would
+            # report a 39-character log line at 312 px when it is drawn at
+            # 160. Getting this wrong in the other direction would be worse -
+            # it would hide a real overflow.
+            if len(a) < 5:
                 return None
             x = self.evaluate(a[0], syms, extra)
-            right = self.evaluate(a[2], syms, extra)
-            n, label = self.text_chars(body, c, 3, syms, fn)
             y = self.evaluate(a[1], syms, extra)
-            if x is None or right is None:
-                return Site(fn, line, kind, label, None, f, x, None, "", y)
-            # The call TRUNCATES at `right`, so the drawn width is whatever
-            # fits - never more. What must still be checked is that `right`
-            # itself is inside the container.
-            fitted = min(n if n is not None else 0,
-                         chars_for_px(right - x, f))
-            s = Site(fn, line, kind, label, fitted, f, x, None,
-                     "fitted to right=%d" % right, y)
-            s.note += " (asked %s chars)" % n
-            return s
+            n, label = self.text_chars(body, c, 2, syms, fn)
+            idx = Expr(self.macros).value(a[4].strip())
+            if idx is None:
+                return Site(fn, line, kind, label, None, f, x, None,
+                            "font %s does not resolve" % a[4].strip(), y)
+            face = self.fonts.get(idx)
+            if face is None:
+                return Site(fn, line, kind, label, None, f, x, None,
+                            "font index %d is not registered" % idx, y)
+            return Site(fn, line, kind, label, n, face, x, None,
+                        "explicit font %d" % idx, y)
 
         # draw_text_sprite: the raw PAL call.
         if len(a) < 3:
@@ -1589,6 +1618,138 @@ def selftest_parser():
 def analyse_source(render_src, macros, layout, fonts, bounds):
     an = Analyser(render_src, macros, layout, fonts, bounds)
     return an, an.run()
+
+
+# ===========================================================================
+# 9b. Anti-truncation - a label that FITS because it was CUT is not fixed
+# ===========================================================================
+#
+# The audit above proves a label ends before its box does. It cannot tell the
+# difference between a label that fits because the box holds it and one that
+# fits because the renderer threw characters away - and the second is not a
+# fix. A player shown "Bartholom" has not been shown their name, and a log
+# line stopped mid-word has lost the part that said what happened.
+#
+# That distinction is invisible to a width measurement, so it needs its own
+# check. This one reads the SAME masked source - so it cannot match inside a
+# comment or mistake code for a literal - and reports every construct in the
+# renderer that can shorten a string on its way to the screen:
+#
+#   PRECISION  "%.10s", "%-10.10s". A field WIDTH pads and is harmless; a
+#              PRECISION truncates. Only the precision is flagged, which is
+#              why this matches the printf grammar rather than searching for
+#              a '%'. "%-12s" must NOT be reported, and the selftest proves
+#              it is not.
+#   CLIPPER    a call whose job is to cut to a container or to a fixed cap:
+#              draw_text_fit(), safe_copy(). A function's own DEFINITION is
+#              not a use of it and is excluded, or the check would flag the
+#              very helper it is asking you to delete.
+#
+# The renderer's allow-list is empty on purpose. A genuinely bounded copy is
+# a game-layer concern (coup_log() owns COUP_LOG_LINE_LEN); presentation code
+# that finds a label too big for its box must move, wrap or condense it.
+
+TRUNC_CALLS = ("draw_text_fit", "safe_copy")
+
+
+# printf string conversion carrying a PRECISION - the truncating form.
+TRUNC_FMT = re.compile(r"%[-+ #0]*\d*\.\d+(?:hh|h|ll|l|z)?s")
+
+
+def _definition_offsets(masked):
+    """Offset of the `name(` that opens each function DEFINITION.
+
+    `static int safe_copy(char* dst, ...)` is a definition, not a call to
+    safe_copy. find_calls() cannot tell them apart - both are `name(` with a
+    balanced argument list - so the definition sites are located through
+    functions() and subtracted.
+    """
+    out = set()
+    for name, brace_i, _end in functions(masked):
+        head = masked.rfind(name, 0, brace_i)
+        while head >= 0:
+            if masked[head + len(name):].lstrip().startswith("("):
+                out.add(head)
+                break
+            head = masked.rfind(name, 0, head)
+    return out
+
+
+def truncations(src):
+    """Every construct in `src` that can shorten a user-visible string.
+
+    Returns a list of (kind, line, what, context).
+    """
+    masked, lits = scan(src)
+    out = []
+
+    for l in lits:
+        for m in TRUNC_FMT.finditer(l["value"]):
+            out.append(("PRECISION", l["line"], m.group(0), l["value"]))
+
+    defs = _definition_offsets(masked)
+    for name in TRUNC_CALLS:
+        for c in find_calls(masked, name):
+            if c["start"] in defs:
+                continue
+            arg0 = c["args"][0].strip() if c["args"] else ""
+            out.append(("CLIPPER", c["line"], name + "()",
+                        "%s(%s, ...)" % (name, arg0)))
+
+    return sorted(out, key=lambda t: t[1])
+
+
+def selftest_truncation():
+    """Negative and positive controls for the anti-truncation check."""
+    ok = True
+
+    # Control C: a field WIDTH is not a truncation and must stay silent.
+    width_only = 'void f(void) { snprintf(b, n, "%-12s %s", a, c); }\n'
+    found = truncations(width_only)
+    print("  control WIDTH-ONLY: %r -> %d finding(s)"
+          % ("%-12s", len(found)))
+    if found:
+        print("      %r" % (found,))
+        print("    a field WIDTH pads, it does not cut - flagging it would "
+              "make the check unusable")
+        ok = False
+
+    # Control D: a precision on a string MUST be caught.
+    precision = 'void f(void) { snprintf(b, n, "Waiting: %.8s...", nm); }\n'
+    found = truncations(precision)
+    kinds = [k for k, _l, _w, _c in found]
+    print("  control PRECISION: injected %r -> %d finding(s) %s"
+          % ("%.8s", len(found), kinds))
+    if "PRECISION" not in kinds:
+        print("    an injected %.8s was NOT detected, so a GREEN from this "
+              "check means nothing")
+        ok = False
+
+    # Control E: a clipping CALL must be caught, and its own DEFINITION
+    # must not be.
+    clipper = ('static void draw_text_fit(int x, int y, int r,\n'
+               '                          const char* t, int c) { (void)x; }\n'
+               'void g(void) { draw_text_fit(4, 8, 300, s, col); }\n')
+    found = truncations(clipper)
+    kinds = [k for k, _l, _w, _c in found]
+    print("  control CLIPPER: one definition + one call -> %d finding(s) %s"
+          % (len(found), kinds))
+    if kinds != ["CLIPPER"]:
+        print("    expected exactly one CLIPPER (the call); a definition is "
+              "not a use and must not be counted")
+        ok = False
+
+    # Control F: a comment that talks about %.8s is not code.
+    commented = 'void f(void) { /* was "%.8s" once */ int q = 0; (void)q; }\n'
+    found = truncations(commented)
+    print("  control COMMENT: %r inside a comment -> %d finding(s)"
+          % ("%.8s", len(found)))
+    if found:
+        print("    the scanner matched inside a comment, so every finding "
+              "below is suspect")
+        ok = False
+
+    return ok
 
 
 def overflows(sites):
@@ -1707,7 +1868,26 @@ def main():
             return 1
         print()
 
+        if not selftest_truncation():
+            print()
+            print("GATE TEXT OVERFLOW: RED - the anti-truncation check failed "
+                  "its own controls")
+            return 1
+        print()
+
     sites, unresolved = an.run()
+    cuts = truncations(render_src)
+
+    # ---- nothing may CUT a label -----------------------------------------
+    print("=== TRUNCATION (a label that fits because it was cut) ===")
+    if cuts:
+        for kind, line, what, ctx in cuts:
+            print("  %-9s %s:%-5d %-16s %s"
+                  % (kind, os.path.basename(args.file), line, what, ctx))
+    else:
+        print("  none - no precision specifier and no clipping call reaches "
+              "a drawn label")
+    print()
 
     # ---- the audit -------------------------------------------------------
     over = overflows(sites)
@@ -1764,13 +1944,24 @@ def main():
         print("wrote %s" % BASELINE)
         return 0
 
+    # The anti-truncation result is NOT ratcheted against a baseline. There is
+    # no acceptable non-zero count to ratchet down from: one cut label is a
+    # cut label, and a baseline would only record which ones we have agreed to
+    # keep cutting.
+    if cuts:
+        print("GATE TEXT OVERFLOW: RED - %d construct(s) shorten a label "
+              "instead of fitting it" % len(cuts))
+        print("  Move the container, wrap onto another row, or draw that one "
+              "label in COUP_FONT_CONDENSED. Do not cut it.")
+        return 1
+
     if not args.strict:
         if over:
             print("GATE TEXT OVERFLOW: RED - %d label(s) run past the box "
                   "they are drawn in" % len(over))
             return 1
         print("GATE TEXT OVERFLOW: GREEN - every measured label fits its "
-              "container and the screen")
+              "container and the screen, and none of them was cut to do it")
         return 0
 
     if not os.path.exists(BASELINE):

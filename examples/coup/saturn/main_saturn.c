@@ -56,6 +56,7 @@
 #include "coup_ui.h"   /* COUP_FONT_* registry indices */
 #include "fonts/saturn_font_alagard_8x8.h"
 #include "fonts/saturn_font_coup_8x8.h"
+#include "fonts/saturn_font_buch_4x6.h"
 
 /* Plate/backdrop blend ratio, top:second.
  *
@@ -321,6 +322,20 @@ void main(void)
             saturn_font_desc_t coup_font;
             saturn_font_coup_8x8_desc(&coup_font);
             cui_saturn_font_register(&coup_font);
+        }
+
+        /* Index 4 - COUP_FONT_CONDENSED. buch 4x6: the same 8x8 cell as the
+         * body face but HALF the advance (4 px), so it needs no layout change
+         * and draws a full 39-character log line in 160 px where the body
+         * face needs 312 - more than the 320 px screen can give any container
+         * that also has a border or a scroll arrow. Used only for the dense
+         * secondary text that cannot be made to fit any other way: the three
+         * log/recap views, the seat names and the hand name. See
+         * coup_ui.h's COUP_FONT_CONDENSED for the full measurement. */
+        {
+            saturn_font_desc_t condensed_font;
+            saturn_font_buch_4x6_desc(&condensed_font);
+            cui_saturn_font_register(&condensed_font);
         }
 
         cui_saturn_font_upload_all();

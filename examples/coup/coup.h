@@ -620,6 +620,26 @@ int  coup_reveal_active_count(const coup_reveal_t* rv);
 int  coup_log_ring_index(int head, int count, int max_rows,
                          int scroll, int row);
 
+/**
+ * Copy display row `row` of `src` word-wrapped at `max_chars` into `out`.
+ * Returns the number of characters written; 0 means that row is past the end.
+ *
+ * Breaks on SPACES only. A label is never split inside a word, because a word
+ * cut in half is a truncation whatever the reason for it - and the whole
+ * point of wrapping here is to stop cutting labels. A single token longer
+ * than `max_chars` is therefore emitted whole, on a row of its own, and is
+ * allowed to be wider than the wrap width; no caller in this game can produce
+ * one (the widest single token any of them builds is a COUP_MAX_NAME-1 name
+ * plus punctuation, 16 characters, against a wrap width of 21).
+ *
+ * Runs of spaces at a break are consumed, so a row never begins with a space
+ * and the left margin stays straight.
+ *
+ * Pure - no state, no allocation, unit tested in tests/coup/test_text_wrap.c.
+ */
+int  coup_wrap_row(const char* src, int max_chars, int row,
+                   char* out, int out_sz);
+
 /* Effect trigger - pure logic, unit tested on the host. */
 int  coup_fx_for_action(int action);
 int  coup_fx_on_transition(const coup_fx_prev_t* prev, const coup_state_t* st);
