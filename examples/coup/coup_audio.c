@@ -42,6 +42,7 @@ static bool audio_ready   = false;
 
 #include <stdint.h>
 #include "coup_sfx_data.h"
+#include "coup_sfx_pitch.h"
 #include "../../pal/saturn/sgl_defs.h"
 
 /* M68K sound driver binary (SGL 3.02j) — needed for CD-DA routing */
@@ -85,7 +86,19 @@ static bool audio_ready   = false;
 /* SFX uses 4 high SCSP slots that the M68K driver doesn't manage */
 #define SFX_SLOT_BASE        28
 #define SFX_SLOT_COUNT       4
-#define SFX_COUNT            8
+
+/* The set has to fit between SFX_BASE_OFFSET and the top of Sound RAM.
+ *
+ * sfx_upload_to_sound_ram() below walks the effects consecutively with no
+ * bound check, so an over-budget set does not fail - it writes over whatever
+ * follows the SFX region, which is nothing good.  convert_sfx.py refuses to
+ * emit such a set; this catches the case where the header was hand-edited or
+ * SFX_BASE_OFFSET was moved without regenerating.  Negative array size, not
+ * _Static_assert: this builds as C99. */
+typedef char coup_sfx_fits_in_sound_ram[
+    (COUP_SFX_TOTAL_BYTES <= COUP_SFX_BUDGET_BYTES) ? 1 : -1];
+typedef char coup_sfx_budget_matches_layout[
+    (COUP_SFX_BUDGET_BYTES == (512 * 1024) - (long)SFX_BASE_OFFSET) ? 1 : -1];
 
 static volatile uint16_t* scsp_slot_reg(int slot, int offset)
 {
@@ -99,25 +112,10 @@ static void scsp_write(int slot, int offset, uint16_t val)
     *scsp_slot_reg(slot, offset) = val;
 }
 
-/*============================================================================
- * SCSP Pitch Encoding
- *
- * SCSP pitch register (+0x10):
- *   bits [14:11] = OCT (signed 4-bit, -8..+7)
- *   bits  [9:0]  = FNS (10-bit fine tuning)
- *
- * Effective rate = 44100 * 2^OCT * (1 + FNS/1024)
- *
- * For 11025 Hz: 11025/44100 = 0.25 = 2^(-2), so OCT=-2, FNS=0
- *============================================================================*/
-
-static uint16_t scsp_pitch_word(int oct, int fns)
-{
-    return (uint16_t)(((oct & 0x0F) << 11) | (fns & 0x3FF));
-}
-
-#define SFX_OCT  (-2)
-#define SFX_FNS  0
+/* The SCSP pitch word is built by coup_sfx_pitch_word() in coup_sfx_pitch.h,
+ * which is pure integer arithmetic and therefore host-testable - see
+ * tests/coup/test_coup_sfx.c.  It is what turns eight per-character samples
+ * into forty per-character sounds. */
 
 /*============================================================================
  * Volume Mapping
@@ -160,7 +158,7 @@ static const Uint8 vol_to_sgl[11] = {
  * SFX State
  *============================================================================*/
 
-static uint32_t sfx_offsets[SFX_COUNT];  /* Sound RAM byte offsets */
+static uint32_t sfx_offsets[COUP_SFX_COUNT];  /* Sound RAM byte offsets */
 static uint8_t  sfx_tl = 0x10;          /* SFX volume TL (default=8/10) */
 static int      sfx_next_slot = 0;      /* Round-robin slot index 0..3 */
 
@@ -213,14 +211,14 @@ static void sfx_upload_to_sound_ram(void)
 
     /* Compute byte offsets for each SFX in Sound RAM */
     off = SFX_BASE_OFFSET;
-    for (i = 0; i < SFX_COUNT; i++) {
+    for (i = 0; i < COUP_SFX_COUNT; i++) {
         sfx_offsets[i] = off;
         off += (uint32_t)sfx_pcm_counts[i] * 2;
     }
 
     /* Copy embedded PCM arrays into Sound RAM.
      * SH-2 is big-endian, SCSP expects big-endian — direct copy. */
-    for (i = 0; i < SFX_COUNT; i++) {
+    for (i = 0; i < COUP_SFX_COUNT; i++) {
         volatile int16_t* dst = (volatile int16_t*)(SCSP_SOUND_RAM_BASE
                                                      + sfx_offsets[i]);
         const int16_t* src = sfx_pcm_ptrs[i];
@@ -275,12 +273,20 @@ void coup_audio_tick(void)
 
 void coup_audio_play_sfx(int sfx_id)
 {
+    coup_audio_play_sfx_as(sfx_id, COUP_CHAR_NONE);
+}
+
+void coup_audio_play_sfx_as(int sfx_id, int character)
+{
     int slot;
     uint32_t sa;
     uint16_t sa_hi, sa_lo, sa_ctrl;
+    uint16_t rate;
 
     if (!audio_ready) return;
-    if (sfx_id < 0 || sfx_id >= SFX_COUNT) return;
+    if (sfx_id < 0 || sfx_id >= COUP_SFX_COUNT) return;
+
+    rate = sfx_pcm_rates[sfx_id];
 
     /* Pick the next SCSP slot (round-robin across slots 28-31) */
     slot = SFX_SLOT_BASE + sfx_next_slot;
@@ -302,7 +308,10 @@ void coup_audio_play_sfx(int sfx_id)
     scsp_write(slot, SCSP_OFF_ENV2, 0x001F);   /* Fast release (RR=31) */
     scsp_write(slot, SCSP_OFF_TL, (uint16_t)(sfx_tl & 0xFF));
     scsp_write(slot, SCSP_OFF_MOD, 0x0000);
-    scsp_write(slot, SCSP_OFF_PITCH, scsp_pitch_word(SFX_OCT, SFX_FNS));
+    /* Each effect carries its own authored rate, so a 5512 Hz sample and an
+     * 11025 Hz one can sit side by side in the set; the character transposes
+     * it from there. */
+    scsp_write(slot, SCSP_OFF_PITCH, coup_sfx_pitch_word((int)rate, character));
     scsp_write(slot, SCSP_OFF_LFO, 0x0000);
     scsp_write(slot, SCSP_OFF_ISEL, 0x0000);
     /* DISDL=7 (max direct send), DIPAN=0 (center) */
@@ -311,8 +320,11 @@ void coup_audio_play_sfx(int sfx_id)
     /* Key-on with KYONEX isolation (clears all other KYONB bits first) */
     scsp_safe_keyon(slot, sa_ctrl);
 
-    /* Timer for API tracking (frames at 60fps) */
-    sfx_timer = ((uint32_t)sfx_pcm_counts[sfx_id] * 60u + 11024u) / 11025u + 2;
+    /* Timer for API tracking (frames at 60fps), against the effect's OWN
+     * rate - a 5512 Hz sample lasts twice as long per stored sample as an
+     * 11025 Hz one. */
+    sfx_timer = (int)(((uint32_t)sfx_pcm_counts[sfx_id] * 60u + (rate - 1u))
+                      / rate) + 2;
 }
 
 void coup_audio_start_music(void)
@@ -439,6 +451,12 @@ void coup_audio_tick(void)
 void coup_audio_play_sfx(int sfx_id)
 {
     (void)sfx_id;
+}
+
+void coup_audio_play_sfx_as(int sfx_id, int character)
+{
+    (void)sfx_id;
+    (void)character;
 }
 
 void coup_audio_start_music(void)

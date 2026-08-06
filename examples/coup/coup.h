@@ -119,16 +119,18 @@ typedef enum {
 
 /*============================================================================
  * Sound Effect IDs
+ *
+ * Generated, not hand-written: the ids are indices into the PCM tables in
+ * coup_sfx_data.h, so the two have to be produced together or a call site
+ * plays whatever waveform happens to sit at that index.  Both come out of
+ * examples/coup/assets/convert_sfx.py.
+ *
+ * This header carries ids and byte totals only - no sample data - because
+ * coup.h is included by every translation unit and `static const` arrays in
+ * a header are duplicated once per unit.
  *============================================================================*/
 
-#define COUP_SFX_CONFIRM       0
-#define COUP_SFX_CANCEL        1
-#define COUP_SFX_CARD_REVEAL   2
-#define COUP_SFX_COINS         3
-#define COUP_SFX_CHALLENGE     4
-#define COUP_SFX_ELIMINATED    5
-#define COUP_SFX_VICTORY       6
-#define COUP_SFX_TURN_START    7
+#include "coup_sfx_ids.h"
 
 /*============================================================================
  * Player Structure
@@ -475,7 +477,29 @@ void coup_render_init_shading(void);
 
 void coup_audio_init(void);
 void coup_audio_tick(void);
+
+/** Play an effect at the pitch it was sampled at. */
 void coup_audio_play_sfx(int sfx_id);
+
+/**
+ * Play an effect retuned to a character's voice.
+ *
+ * The design calls for eight per-character cues across five characters -
+ * forty sounds, and at the shipped encoding forty sounds do not fit in the
+ * 81,920 bytes Sound RAM leaves for SFX.  They do not need to: the SCSP
+ * retunes a slot in hardware through its OCT/FNS pitch register, so one
+ * sample serves all five characters at five pitches, and the player learns
+ * WHO is acting without reading the screen.  Duke is lowest through Contessa
+ * highest, matching the COUP_CHAR_* order.
+ *
+ * `character` is a COUP_CHAR_* value.  Anything outside 0..COUP_NUM_CHARACTERS-1
+ * (COUP_CHAR_FACEDOWN, COUP_CHAR_NONE, a bot with no claimed card) plays at
+ * the sampled pitch, so callers never have to special-case it.
+ *
+ * The encoding lives in coup_sfx_pitch.h and is tested on the host.
+ */
+void coup_audio_play_sfx_as(int sfx_id, int character);
+
 void coup_audio_start_music(void);
 
 /**

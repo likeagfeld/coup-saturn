@@ -209,6 +209,29 @@ void coup_init(void)
 
 void coup_update(cui_input_action_t action)
 {
+    /* Every directional press ticks, wherever it lands.
+     *
+     * Done here, once, rather than at each of the dozen cursor-move sites
+     * further down: those live in eight different phase handlers and the
+     * ones that were added last had no sound at all, so the menus were
+     * silent to navigate and only spoke when something was confirmed. This
+     * is also the only place that sees a direction the current screen
+     * ignores, which still deserves feedback - silence reads as a dropped
+     * input on a pad going through a modem-era menu. */
+    switch (action) {
+    case CUI_INPUT_UP:
+    case CUI_INPUT_DOWN:
+    case CUI_INPUT_LEFT:
+    case CUI_INPUT_RIGHT:
+    case CUI_INPUT_PAGE_UP:
+    case CUI_INPUT_LOG_UP:
+    case CUI_INPUT_LOG_DOWN:
+        coup_audio_play_sfx(COUP_SFX_UI_MOVE);
+        break;
+    default:
+        break;
+    }
+
     /* X/Y/Z: log scrolling (available during any game phase) */
     if (g_state.screen == COUP_SCREEN_GAME) {
         if (action == CUI_INPUT_LOG_UP) {
@@ -238,13 +261,13 @@ void coup_update(cui_input_action_t action)
         /* Rules viewer: LEFT/RIGHT = pages, B or R = back */
         if (action == CUI_INPUT_RIGHT) {
             if (g_state.rules_page < COUP_RULES_PAGES - 1) {
+                /* No sound: the directional tick above already fired, and
+                 * stacking a confirm on top of it just doubles the click. */
                 g_state.rules_page++;
-                coup_audio_play_sfx(COUP_SFX_CONFIRM);
             }
         } else if (action == CUI_INPUT_LEFT) {
             if (g_state.rules_page > 0) {
                 g_state.rules_page--;
-                coup_audio_play_sfx(COUP_SFX_CONFIRM);
             }
         } else if (action == CUI_INPUT_CANCEL
                    || action == CUI_INPUT_PAGE_DOWN) {
@@ -547,6 +570,40 @@ static void sync_ui_state(void)
     }
 }
 
+/*--- Sound: which voice an event speaks in ---*/
+
+/*
+ * The character an action CLAIMS, so its sound is pitched to that voice.
+ *
+ * Income, Foreign Aid and Coup claim nobody - they are the moves anyone can
+ * make - and get the unpitched sample, which is exactly how they should read
+ * against the four that name a card.
+ */
+static int action_voice(uint8_t action)
+{
+    switch (action) {
+    case COUP_ACT_TAX:         return COUP_CHAR_DUKE;
+    case COUP_ACT_ASSASSINATE: return COUP_CHAR_ASSASSIN;
+    case COUP_ACT_STEAL:       return COUP_CHAR_CAPTAIN;
+    case COUP_ACT_EXCHANGE:    return COUP_CHAR_AMBASSADOR;
+    default:                   return COUP_CHAR_NONE;
+    }
+}
+
+/*
+ * A voice for a SEAT rather than a card, used by the turn cue.
+ *
+ * "Turn begins" has no character behind it, but it is the one event where
+ * knowing whose it is matters most, so the seat index is folded onto the
+ * same five pitches. A player hears their own turn start on the same note
+ * every time, which is the point of the per-character scheme applied to the
+ * one event that has no character.
+ */
+static int seat_voice(uint8_t player_id)
+{
+    return (int)(player_id % COUP_NUM_CHARACTERS);
+}
+
 /*--- Process events: LOG + SFX only ---*/
 /*
  * All game-mechanical state (coins, cards, alive, turn, etc.) is now
@@ -566,17 +623,36 @@ static void process_rule_events(const coup_event_t* events, int count)
         const coup_event_t* e = &events[i];
         switch (e->type) {
 
-        case COUP_EVT_GAME_STARTED:
-        case COUP_EVT_CHALLENGE_OPENED:
         case COUP_EVT_BLOCK_OPENED:
-        case COUP_EVT_BLOCK_CHALLENGE_OPENED:
         case COUP_EVT_INFLUENCE_LOSS_REQUESTED:
-        case COUP_EVT_CARD_REPLACED:
         case COUP_EVT_ROUND_ADVANCED:
         case COUP_EVT_PLAYER_JOINED:
         case COUP_EVT_PLAYER_LEFT:
         case COUP_EVT_READY_CHANGED:
             /* No log or SFX needed */
+            break;
+
+        case COUP_EVT_GAME_STARTED:
+            /* The court deck going down on the table. */
+            coup_audio_play_sfx(COUP_SFX_DECK_PLACE);
+            break;
+
+        case COUP_EVT_CARD_REPLACED:
+            /* A card returned to the deck and a fresh one dealt out. */
+            coup_audio_play_sfx(COUP_SFX_CARD_DEAL);
+            break;
+
+        case COUP_EVT_CHALLENGE_OPENED:
+            /* Someone's claim is being called, in the voice of the card
+             * they claimed. The RESULT gets act_success/act_fail below, so
+             * the two never sound together. */
+            coup_audio_play_sfx_as(COUP_SFX_CHALLENGE,
+                                   e->data.challenge_opened.claimed_char);
+            break;
+
+        case COUP_EVT_BLOCK_CHALLENGE_OPENED:
+            coup_audio_play_sfx_as(COUP_SFX_CHALLENGE,
+                                   e->data.block_challenge_opened.claimed_char);
             break;
 
         case COUP_EVT_TURN_STARTED: {
@@ -593,6 +669,12 @@ static void process_rule_events(const coup_event_t* events, int count)
                     buf[pos++] = *s++;
                 buf[pos] = '\0';
                 coup_log(buf);
+            }
+            /* Every turn, not just the local player's: sync_ui_phase() also
+             * plays this when it hands control back to the human, but a
+             * remote player's turn used to begin in silence. */
+            if (pid != g_state.my_id) {
+                coup_audio_play_sfx_as(COUP_SFX_TURN_START, seat_voice(pid));
             }
             break;
         }
@@ -626,6 +708,26 @@ static void process_rule_events(const coup_event_t* events, int count)
             }
             buf[pos] = '\0';
             coup_log(buf);
+
+            /* The declared act, in the claimed character's voice. Income,
+             * Foreign Aid and Tax are silent here on purpose - the coin
+             * movement that follows is their sound. */
+            switch (action) {
+            case COUP_ACT_COUP:
+                coup_audio_play_sfx(COUP_SFX_COUP_STRIKE);
+                break;
+            case COUP_ACT_ASSASSINATE:
+                coup_audio_play_sfx_as(COUP_SFX_ASSASSINATE, action_voice(action));
+                break;
+            case COUP_ACT_STEAL:
+                coup_audio_play_sfx_as(COUP_SFX_STEAL, action_voice(action));
+                break;
+            case COUP_ACT_EXCHANGE:
+                coup_audio_play_sfx_as(COUP_SFX_CARD_SHUFFLE, action_voice(action));
+                break;
+            default:
+                break;
+            }
             break;
         }
 
@@ -689,7 +791,11 @@ static void process_rule_events(const coup_event_t* events, int count)
                 }
             }
             coup_log(buf);
-            coup_audio_play_sfx(COUP_SFX_CHALLENGE);
+            /* Resolved or deflated, in the voice of the card that settled
+             * it - proven if the defender had it, exposed if not. */
+            coup_audio_play_sfx_as(
+                had_card ? COUP_SFX_ACT_SUCCESS : COUP_SFX_ACT_FAIL,
+                e->data.challenge_result.revealed_char);
             break;
         }
 
@@ -708,7 +814,11 @@ static void process_rule_events(const coup_event_t* events, int count)
                 buf[pos] = '\0';
             }
             coup_log(buf);
-            coup_audio_play_sfx(COUP_SFX_CHALLENGE);
+            /* A block is a door closing, in the blocker's voice: the Duke on
+             * foreign aid, the Contessa on an assassination, Captain or
+             * Ambassador on a steal. */
+            coup_audio_play_sfx_as(COUP_SFX_COUNTER,
+                                   e->data.block_declared.character);
             break;
         }
 
@@ -765,7 +875,9 @@ static void process_rule_events(const coup_event_t* events, int count)
                 }
             }
             coup_log(buf);
-            coup_audio_play_sfx(COUP_SFX_CHALLENGE);
+            coup_audio_play_sfx_as(
+                had_card ? COUP_SFX_ACT_SUCCESS : COUP_SFX_ACT_FAIL,
+                e->data.block_challenge_result.revealed_char);
             break;
         }
 
@@ -792,7 +904,10 @@ static void process_rule_events(const coup_event_t* events, int count)
             }
             buf[pos] = '\0';
             coup_log(buf);
-            coup_audio_play_sfx(COUP_SFX_CARD_REVEAL);
+            /* Two sounds would collide here, and the loss is the news: the
+             * card is turned face up AND its owner is one influence poorer.
+             * Play the loss, in the dead card's voice. */
+            coup_audio_play_sfx_as(COUP_SFX_INFLUENCE_LOST, revealed);
             break;
         }
 
@@ -820,10 +935,15 @@ static void process_rule_events(const coup_event_t* events, int count)
         }
 
         case COUP_EVT_COINS_CHANGED:
-            /* SFX only — state synced from table view */
+            /* SFX only — state synced from table view.
+             * Paying out used to be silent, so a Coup or an assassination
+             * cost the player seven or three coins with no sound at all. */
             if (e->data.coins_changed.new_coins >
                 e->data.coins_changed.old_coins) {
-                coup_audio_play_sfx(COUP_SFX_COINS);
+                coup_audio_play_sfx(COUP_SFX_COIN_GAIN);
+            } else if (e->data.coins_changed.new_coins <
+                       e->data.coins_changed.old_coins) {
+                coup_audio_play_sfx(COUP_SFX_COIN_SPEND);
             }
             break;
 
@@ -843,7 +963,7 @@ static void process_rule_events(const coup_event_t* events, int count)
                 buf[pos] = '\0';
             }
             coup_log(buf);
-            coup_audio_play_sfx(COUP_SFX_ELIMINATED);
+            coup_audio_play_sfx_as(COUP_SFX_EXILED, seat_voice(pid));
             break;
         }
 
@@ -965,7 +1085,7 @@ static void process_rule_events(const coup_event_t* events, int count)
                     buf[pos++] = *s++;
                 buf[pos] = '\0';
                 coup_log(buf);
-                coup_audio_play_sfx(COUP_SFX_ELIMINATED);
+                coup_audio_play_sfx(COUP_SFX_EXILED);
             }
             break;
         }
@@ -1017,7 +1137,8 @@ static void sync_ui_phase(void)
                         break;
                     }
                 }
-                coup_audio_play_sfx(COUP_SFX_TURN_START);
+                coup_audio_play_sfx_as(COUP_SFX_TURN_START,
+                                       seat_voice(g_state.my_id));
             }
         } else {
             if (g_state.phase != COUP_PHASE_IDLE) {
@@ -1033,7 +1154,10 @@ static void sync_ui_phase(void)
             if (g_state.phase != COUP_PHASE_CHALLENGE_WAIT) {
                 g_state.phase = COUP_PHASE_CHALLENGE_WAIT;
                 g_state.menu_cursor = 0;
-                coup_audio_play_sfx(COUP_SFX_CHALLENGE);
+                /* The challenge itself already sounded on CHALLENGE_OPENED,
+                 * for everyone. This is the narrower fact that the prompt is
+                 * yours, so it gets the menu cue and not the game one. */
+                coup_audio_play_sfx(COUP_SFX_UI_CHALLENGE);
             }
         } else {
             g_state.phase = COUP_PHASE_RESOLVING;
@@ -1061,7 +1185,7 @@ static void sync_ui_phase(void)
             if (g_state.phase != COUP_PHASE_BLOCK_CHALLENGE) {
                 g_state.phase = COUP_PHASE_BLOCK_CHALLENGE;
                 g_state.menu_cursor = 0;
-                coup_audio_play_sfx(COUP_SFX_CHALLENGE);
+                coup_audio_play_sfx(COUP_SFX_UI_CHALLENGE);
             }
         } else {
             g_state.phase = COUP_PHASE_RESOLVING;
@@ -1159,7 +1283,9 @@ static void enter_human_exchange_phase(void)
     g_state.exchange_cursor = 0;
     g_state.exchange_sel[0] = -1;
     g_state.exchange_sel[1] = -1;
-    coup_audio_play_sfx(COUP_SFX_CARD_REVEAL);
+    /* The exchange cards being put in front of you. The riffle already
+     * played when the Ambassador was declared. */
+    coup_audio_play_sfx(COUP_SFX_CARD_DEAL);
 }
 
 static void enter_human_lose_influence(void)

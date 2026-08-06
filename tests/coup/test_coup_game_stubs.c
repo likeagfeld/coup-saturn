@@ -14,18 +14,35 @@
 #define STUB_SFX_LOG_SIZE 64
 
 static int sfx_log[STUB_SFX_LOG_SIZE];
+static int sfx_char_log[STUB_SFX_LOG_SIZE];
 static int sfx_count = 0;
 
 void coup_audio_play_sfx(int sfx_id)
 {
-    if (sfx_count < STUB_SFX_LOG_SIZE)
-        sfx_log[sfx_count++] = sfx_id;
+    coup_audio_play_sfx_as(sfx_id, COUP_CHAR_NONE);
+}
+
+void coup_audio_play_sfx_as(int sfx_id, int character)
+{
+    if (sfx_count < STUB_SFX_LOG_SIZE) {
+        sfx_char_log[sfx_count] = character;
+        sfx_log[sfx_count++]    = sfx_id;
+    }
 }
 
 void stub_sfx_reset(void)
 {
     sfx_count = 0;
     memset(sfx_log, 0, sizeof(sfx_log));
+    memset(sfx_char_log, 0, sizeof(sfx_char_log));
+}
+
+/* Character the effect at `index` was pitched to, or -1. */
+int stub_sfx_char_at(int index)
+{
+    if (index >= 0 && index < sfx_count)
+        return sfx_char_log[index];
+    return -1;
 }
 
 int stub_sfx_last(void)
