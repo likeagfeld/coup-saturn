@@ -47,14 +47,22 @@ def to_rgb555(r, g, b):
 # reads fine, is median 78.3. Conversion is not the cause - it costs only
 # ~3 luma to quantization.
 #
-# 48 sits well above the unreadable pair and well below the title, so scenes
-# that are already comfortable are left completely alone.
-TARGET_MEDIAN = 48.0
+# Raised from 48 to 64 after a second report: at 48 the game table was still
+# "too darkened to see or appreciate the background art". 48 was half the
+# title's 83, which is the screen that reads correctly.
+#
+# The cost was MEASURED before changing it, by sweeping the target and
+# counting pixels crushed to within 2 levels of black: 1.6-1.8% on the game
+# table and 0.4% on connecting, IDENTICAL at 48, 60, 64 and 70. The lift was
+# never trading away shadow detail, so it was simply set too low. 64 leaves
+# the table at 65 and still below the title, so the screens keep their
+# tonal separation instead of flattening to one brightness.
+TARGET_MEDIAN = 64.0
 
 # Never lift harder than this. A gamma below it crushes the highlights flat
 # and turns a moody interior into grey soup - the art is SUPPOSED to be dim,
 # it just cannot be invisible.
-MIN_GAMMA = 0.62
+MIN_GAMMA = 0.52
 
 
 def lift_shadows(img, name=""):
@@ -99,6 +107,37 @@ SEAM_MAX_TRIM = 0.25
 # not scene content. MEASURED: B1_title steps 42% across its last 2 columns.
 EDGE_STEP = 0.35
 
+# Most a seam can be trimmed by the last-resort per-column step test alone.
+# The two detectors above found nothing, so anything here is subtle, and a
+# subtle seam is a narrow one. 8 px covers every real case measured
+# (B7_rules needs 1) while refusing the 59 px the raw step test wanted to
+# take off the splash's own vignette.
+FALLBACK_MAX_TRIM = 8
+
+
+def _strongest_step_x(col, w, margin=60):
+    """Column index of the sharpest brightness change in the right margin.
+
+    Two different pictures butted together produce a step far larger than
+    anything inside either one. On the delivered art the winning step is
+    5-148x the median column-to-column change, so this is not a close call -
+    but it is only trusted when it clearly stands out, otherwise a busy
+    picture's own detail would trigger a trim of its real content.
+    """
+    import numpy as np
+
+    diff = np.abs(np.diff(col))
+    med = float(np.median(diff)) if diff.size else 0.0
+    tail = diff[max(0, w - margin):]
+    if tail.size == 0 or med <= 0:
+        return w
+    j = int(np.argmax(tail))
+    if tail[j] < med * 4.0:
+        return w                      # nothing decisive; keep the full width
+    # diff[k] is the step between column k and k+1, so the neighbour starts
+    # at k+1. Cut there.
+    return max(0, w - margin) + j + 1
+
 
 def trim_panel_seam(img):
     """Cut off a neighbouring panel that bled in from the source sheet.
@@ -129,6 +168,18 @@ def trim_panel_seam(img):
                 best = (x, ratio)
     if best is not None:
         x = best[0]
+        # The BRIGHT rule is not always the panel boundary - on some sheets it
+        # is a highlight a few columns INSIDE the neighbour, so cutting at it
+        # leaves a sliver behind. MEASURED after the first fix shipped:
+        # B2_game_table's strongest edge step sits 24 px from the edge but
+        # this loop cut at 18, leaving 6 px of the next scene; B4_connecting
+        # and B7_rules each left 1 px. The user still saw the sliver.
+        #
+        # So the result is CHECKED rather than trusted: take the strongest
+        # column-to-column step anywhere in the right margin and, if it lies
+        # further in than the bright rule, cut there instead. That step is the
+        # actual boundary between two different pictures.
+        x = min(x, _strongest_step_x(col, w))
         return img.crop((0, 0, x, h)), w - x
 
     # No bright border. A neighbouring panel can also bleed in DARKER than the
@@ -143,7 +194,29 @@ def trim_panel_seam(img):
             continue
         step = abs(after - before) / before
         if step > EDGE_STEP and (w - x) <= w - limit:
+            # Same check as the bright branch. This averaging test finds a
+            # SUSTAINED level change, which can start a few columns after the
+            # actual join when the neighbour opens on a similar tone.
+            # MEASURED: B2_game_table cut at 18 px while its sharpest step -
+            # the real boundary - is at 24, leaving 6 px of the next scene on
+            # screen. Cut at whichever is further in.
+            x = min(x, _strongest_step_x(col, w))
             return img.crop((0, 0, x, h)), w - x
+
+    # Nothing sustained. There can still be a hard join with matching average
+    # levels either side, which only the per-column step reveals - B7_rules
+    # carries exactly one such column.
+    #
+    # This fallback is deliberately allowed to cut only a FEW pixels. Neither
+    # of the two detectors above found anything, so whatever is here is subtle
+    # by definition, and a subtle seam is a narrow one. Without that bound the
+    # step test alone wanted to take 59 px off L2_boot_splash - 18% of the
+    # picture - on an 8x-median step that is just the art's own vignette
+    # (its last 60 columns are only 11% darker than the rest, not a different
+    # scene at all). MEASURED: that would have cropped the splash badly.
+    x = _strongest_step_x(col, w)
+    if x < w and (w - x) <= FALLBACK_MAX_TRIM:
+        return img.crop((0, 0, x, h)), w - x
     return img, 0
 
 

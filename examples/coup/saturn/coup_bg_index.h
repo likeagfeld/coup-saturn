@@ -30,7 +30,7 @@ enum {
    COUP_BG_SOURCE splash = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/logo/L2_boot_splash.png
    COUP_BG_SOURCE game = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/backgrounds/B2_game_table.png
    COUP_BG_SOURCE title = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/backgrounds/B1_title.png
-   COUP_BG_SOURCE rules = Official Art/rulesoverlay.png
+   COUP_BG_SOURCE rules = Official Art/RulesOverlay.png
    COUP_BG_SOURCE lobby = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/backgrounds/B3_lobby.png
    COUP_BG_SOURCE connecting = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/backgrounds/B4_connecting.png
    COUP_BG_SOURCE victory = Official Art/coup_saturn_complete_asset_pack/coup_saturn_complete_asset_pack/saturn_ready/backgrounds/B5_victory.png
