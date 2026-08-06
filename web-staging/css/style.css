@@ -346,7 +346,7 @@ html, body {
 .btn-purple { border-color: var(--accent-purple); color: #C9A6F0; }
 .btn-dim    { border-color: var(--accent-dim);    color: var(--text-gray); }
 
-.btn-lg { min-height: 52px; padding: 14px 34px; font-size: clamp(13px, 1.9vmin, 18px); }
+.btn-lg { min-height: 52px; padding: 14px 34px; font-size: clamp(14px, 2.1vmin, 23px); }
 .btn-sm { min-height: 32px; padding: 5px 11px;  font-size: clamp(9px, 1.2vmin, 11px); letter-spacing: 0.09em; }
 
 select.btn { appearance: none; text-align: center; }
@@ -637,7 +637,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
     position: absolute;
     right: clamp(12px, 3vw, 46px);
     bottom: clamp(12px, 3vh, 46px);
-    width: clamp(90px, 12vw, 170px);
+    width: clamp(100px, 15vw, 240px);
     border-radius: var(--r-sm);
     box-shadow: var(--shadow-deep);
     border: 1px solid var(--gold-hair);
@@ -674,7 +674,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 
 .center-panel h2 {
     font-family: var(--font-display);
-    font-size: clamp(15px, 2.6vmin, 24px);
+    font-size: clamp(16px, 2.9vmin, 30px);
     letter-spacing: 0.2em;
     color: var(--text-yellow);
     text-transform: uppercase;
@@ -764,7 +764,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 
 .bar-title {
     font-family: var(--font-display);
-    font-size: clamp(12px, 1.9vmin, 17px);
+    font-size: clamp(13px, 2.1vmin, 22px);
     letter-spacing: 0.2em;
     color: var(--text-yellow);
     text-transform: uppercase;
@@ -980,7 +980,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 
 .seat-portrait {
     grid-row: 1 / 3;
-    width: clamp(30px, 4.6vmin, 46px);
+    width: clamp(34px, 6.2vmin, 68px);
     border-radius: var(--r-sm);
 }
 
@@ -1022,7 +1022,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 .seat-cards { display: flex; gap: 4px; }
 
 .seat-card {
-    width: clamp(20px, 3vmin, 30px);
+    width: clamp(22px, 4vmin, 44px);
     border-radius: 3px;
     border: 1px solid var(--char-facedown);
     background-size: cover;
@@ -1176,7 +1176,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
     align-items: center;
     gap: 5px;
     font-family: var(--font-mono);
-    font-size: clamp(13px, 2vmin, 19px);
+    font-size: clamp(14px, 2.2vmin, 24px);
     color: var(--text-yellow);
 }
 .hand-coins img { width: 1.3em; height: 1.3em; }
@@ -1184,7 +1184,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 .hand-cards { display: flex; gap: clamp(6px, 1.2vmin, 14px); margin-left: auto; }
 
 .hand-card {
-    width: clamp(52px, 9.5vmin, 96px);
+    width: clamp(58px, 13.5vmin, 152px);
     cursor: pointer;
     transition: transform 0.16s ease, box-shadow 0.2s ease;
     border: 1px solid var(--accent-dim);
@@ -1278,7 +1278,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 }
 
 .gameover-plate {
-    width: clamp(200px, 44vmin, 440px);
+    width: clamp(210px, 48vmin, 520px);
     filter: drop-shadow(0 8px 26px rgba(0, 0, 0, 0.85));
     animation: plateIn 0.75s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -1293,7 +1293,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
    a gouraud-lit, zoom-point-scaled sprite. */
 .gameover-portrait {
     position: relative;
-    width: clamp(110px, 26vmin, 210px);
+    width: clamp(120px, 31vmin, 300px);
     animation: winnerIn 0.9s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .gameover-portrait::before {
@@ -1313,7 +1313,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 
 .gameover-winner {
     font-family: var(--font-display);
-    font-size: clamp(16px, 3.2vmin, 30px);
+    font-size: clamp(17px, 3.6vmin, 38px);
     letter-spacing: 0.16em;
     color: var(--text-yellow);
     text-transform: uppercase;
@@ -1442,7 +1442,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 
 .overlay-title {
     font-family: var(--font-display);
-    font-size: clamp(12px, 1.9vmin, 17px);
+    font-size: clamp(13px, 2.1vmin, 22px);
     letter-spacing: 0.2em;
     color: var(--text-yellow);
     text-transform: uppercase;
@@ -1493,9 +1493,9 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
     border-radius: var(--r-sm);
     background: rgba(20, 20, 44, 0.7);
 }
-.rules-char-row .portrait-frame { width: clamp(46px, 8vmin, 74px); }
+.rules-char-row .portrait-frame { width: clamp(50px, 9.5vmin, 96px); }
 .rules-char-row .rules-card {
-    width: clamp(38px, 6.6vmin, 62px);
+    width: clamp(42px, 8vmin, 80px);
     aspect-ratio: 2/3;
     border-radius: var(--r-sm);
     background-size: cover;
@@ -1556,18 +1556,18 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
    borders. Belt and braces, because this is the view where cropping is
    least acceptable. */
 .zoom-card  {
-    width: clamp(110px, 26vmin, 210px);
+    width: clamp(120px, 31vmin, 300px);
     max-height: 62vh;
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
 }
-.zoom-portrait { width: clamp(120px, 30vmin, 250px); }
+.zoom-portrait { width: clamp(130px, 35vmin, 350px); }
 .zoom-video { width: min(76vw, 380px); border-radius: var(--r-md);
               border: 2px solid var(--accent-gold); }
 .zoom-name  {
     font-family: var(--font-display);
-    font-size: clamp(14px, 2.6vmin, 24px);
+    font-size: clamp(15px, 2.9vmin, 30px);
     letter-spacing: 0.18em;
     color: var(--text-yellow);
     text-transform: uppercase;
@@ -1865,9 +1865,15 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
        art mirrored instead - readable enough to notice and wrong. */
     .title-carousel.tc-motion .tc-face-back {
         display: block;
-        /* scaleX(-1) counter-mirrors the 180 flip so the back's emblem is
-           not painted reversed. */
-        transform: rotateY(180deg) scaleX(-1);
+        /* rotateY(180deg) ALONE. This is the standard two-sided card
+           pattern and it is already correct: the face is pre-rotated so
+           that when the card itself turns away, this side arrives facing
+           the viewer the right way round.
+           A scaleX(-1) "counter-mirror" was added here on the assumption
+           that the 180 flip reverses the art. It does not - the flip is
+           undone by the card's own rotation - so the scaleX was an extra
+           mirror with nothing to cancel, and it MIRRORED the back. Removed. */
+        transform: rotateY(180deg);
     }
 
     /* The front card is the one that has to read at a glance, so it gets a
