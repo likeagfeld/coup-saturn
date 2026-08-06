@@ -133,9 +133,23 @@ def main():
         print(f"  poll 1: armed={armed} frame={frame} angle={angle} "
               f"recip_q16={recip_q16} finished={finished}")
 
+        # A FINISHED fly-in also reads armed=0, and that is a PASS, not a
+        # failure. MEASURED on the demo build: frame=90, finished=1, angle=0,
+        # recip_q16=65536 - identical at a 16 s and a 45 s settle, so the
+        # counter stopped at 90 rather than free-running. A path that never
+        # armed leaves frame at 0; one that armed and is still going keeps
+        # incrementing. Only the never-armed case is inconclusive.
+        if not armed and finished and frame > 0:
+            print(f"GATE RBG0 WITNESS: GREEN - the fly-in ran to completion "
+                  f"({frame} frames) and disarmed. RBG0 control code executes "
+                  f"and its parameters advance. This proves EXECUTION, not "
+                  f"display - see qa_rbg0_legibility.py for the pixel check.")
+            return 0
+
         if not armed:
             print("GATE RBG0 WITNESS: INCONCLUSIVE - witness present but "
-                  "armed=0. Expected on a normal (non-demo) disc build - "
+                  "armed=0 with frame=0, so it never armed. Expected on a "
+                  "normal (non-demo) disc build - "
                   "rebuild with -DCOUP_RBG0_TITLE_DEMO to exercise this gate. "
                   "If this WAS a demo build, slScrAutoDisp(NBG0ON|RBG0ON) "
                   "was rejected and the fallback to NBG0-only fired - see "
