@@ -1322,6 +1322,79 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 
 .gameover-sub { color: var(--text-gray); font-size: clamp(11px, 1.6vmin, 15px); }
 
+/* --- Recap of how the match ended ----------------------------------------
+   Saturn draws COUP_GAMEOVER_RECAP_ROWS rows in a dark panel under a gold
+   hairline, the newest marked with ">" on a selection plate in gold and the
+   rest in grey (coup_render.c). Same structure, same colours, same row count
+   - the rows themselves come from js/log-ring.js. */
+.recap {
+    width: min(100%, 460px);
+    background: rgba(12, 12, 32, 0.86);
+    border: 1px solid var(--accent-dim);
+    border-top: 2px solid var(--accent-gold);
+    border-radius: var(--r-md);
+    padding: 6px 8px 8px;
+    text-align: left;
+    animation: recapIn 0.6s 0.35s ease-out both;
+}
+
+@keyframes recapIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+}
+
+.recap-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 4px;
+}
+.recap-title {
+    font-family: var(--font-display);
+    font-size: clamp(9px, 1.3vmin, 12px);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-gold);
+}
+.recap-hint {
+    font-size: clamp(9px, 1.15vmin, 11px);
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+.recap-rows { display: flex; flex-direction: column; gap: 1px; }
+
+.recap-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: clamp(10px, 1.25vmin, 12.5px);
+    line-height: 1.5;
+    color: var(--text-gray);
+    /* A long line must not widen the panel or wrap into two rows - Saturn's
+       recap is exactly one line per entry and the row count is load-bearing. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.recap-row .recap-mark {
+    flex: 0 0 auto;
+    width: 0.9em;
+    color: var(--accent-gold);
+}
+.recap-row .recap-text { overflow: hidden; text-overflow: ellipsis; }
+
+/* The winning action: COUP_PANEL_SELECT behind it, COUP_TEXT_GOLD on it. */
+.recap-row.winning {
+    background: var(--panel-select);
+    color: var(--text-yellow);
+    font-weight: 600;
+}
+
 /* ==========================================================================
    OVERLAYS: rules, log, kick, zoom
    ========================================================================== */
@@ -1553,4 +1626,281 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
     .title-wordmark-wrap::after { display: none; }
     .staging-badge::before { animation: none; opacity: 1; }
     .seat:hover, .hand-card:hover, .menu-item:hover:not(.disabled) { transform: none; }
+}
+
+/* ==========================================================================
+   TITLE CARD CAROUSEL  (the turning ring of cards on the title screen)
+   ==========================================================================
+
+   Six cards orbit a vertical axis at 60 deg spacing. The one nearest the
+   viewer is markedly larger and fully legible; the far ones are smaller,
+   dimmer, and painted behind.
+
+   SHAPE OF THIS BLOCK
+     The STATIC arrangement is the base stylesheet. The 3D ring is an
+     enhancement layered on top, gated on BOTH
+       @media (prefers-reduced-motion: no-preference)
+     and the .tc-motion class that title.js adds after asking fx.js's
+     reducedMotion(). Written the other way round - animation as the base,
+     reduced motion as an override - a viewer with the setting on would get
+     whatever the override forgot to undo, which is how "frozen mid-rotation"
+     messes happen. This way reduced motion is not an override at all; it is
+     simply the enhancement not applying, and what remains is a plain,
+     legible, wrapped row of the six cards at rest.
+
+     Note this block sits AFTER the global REDUCED MOTION section above. That
+     costs nothing: every animation declared here lives inside the
+     no-preference query, so the two can never both be live and there is no
+     !important argument between them.
+
+   GEOMETRY  (W = --tc-w, the front card's unscaled layout width)
+     radius r = 1.154 W, perspective P = 3.077 W, so the camera sits
+     1.923 W in front of the nearest card - comfortably clear of it. Both are
+     multiples of W and W is viewport-relative, so the whole orbit scales
+     with the screen; there is not a fixed pixel in the geometry. Because the
+     ring's total width works out at 3.564 W and W is capped at 24vw, the
+     ring is about 86vw at its widest and cannot overflow a phone in
+     portrait.
+
+     Apparent width, front vs rear:
+       front  z = +1.154 W  ->  perspective x1.600, scale x1.000  = 1.600 W
+       rear   z = -1.154 W  ->  perspective x0.727, scale x0.585  = 0.425 W
+     The front card is therefore 3.76x the rear card across, ~14x the area.
+
+   THE SCALE FACTOR, AND WHY IT IS NOT 1.0 AT THE BACK
+     Perspective alone gives 1.600 / 0.727 = 2.20x. That is depth, but it is
+     not "takes up more real estate" - so tcPresent adds an explicit in-plane
+     scale on top, 1.000 at the front falling to 0.585 at the rear, a further
+     1.71x. The two multiply to the 3.76x above.
+
+     The explicit scale peaks at 1.0 and only ever shrinks. Scaling UP a
+     composited layer past the size it was rasterised at is what makes
+     transformed elements go soft, and the front card is the one element on
+     this screen that has to stay sharp. So --tc-w is defined as the FRONT
+     card's size and every other position scales down from it.
+
+     The scale stops approximate a cosine (S = 0.7925 + 0.2075 cos phi,
+     sampled every 60 deg) rather than ramping linearly, because a linear
+     ramp between front and back reads as a triangle wave - the card visibly
+     changes direction at the turn instead of easing through it.
+
+   DEPTH ORDER - the part most likely to break
+     Correct painting depends on one unbroken 3D rendering context from
+     .tc-stage down to the faces. transform-style: preserve-3d is silently
+     forced to flat on any element that also carries a GROUPING property:
+     overflow other than visible, opacity < 1, filter, backdrop-filter,
+     clip-path, mask, mix-blend-mode, isolation, contain: paint, or a
+     will-change naming any of those. One of those on .tc-ring or .tc-card
+     collapses the ring into a flat row painted in DOM order - a rear card
+     over the front one - and it fails silently.
+
+     So, held to deliberately:
+       - .tc-stage / .tc-ring / .tc-card / .tc-inner carry NONE of those
+         properties. will-change here is transform only, which is not a
+         grouping property.
+       - Every fade is opacity on .tc-face, which is a LEAF. Nothing below it
+         has a 3D context to lose.
+       - Depth emphasis uses box-shadow, never filter: drop-shadow - the
+         latter would flatten whatever it is set on.
+       - No z-index anywhere in the ring. Inside a 3D rendering context the
+         paint order comes from the transformed z, and a z-index would only
+         be an invitation to fight it.
+       - .title-carousel itself sits ABOVE the perspective root, so its
+         entrance animation may use opacity and transform freely: grouping
+         properties on an ancestor of the context clip and composite the
+         finished 3D render, they do not flatten a context established below
+         them. The same is true of .screen's overflow: hidden and isolation,
+         and of the opacity ramp fx.js's fadeIn() runs on the screen.
+     scripts/qa/qa_web_carousel.py asserts these against this stylesheet,
+     because none of them announce themselves when broken.
+
+   COST
+     One CSS animation on the ring plus per-card scale and opacity, all
+     declarative, all transform/opacity, none of them triggering layout or
+     paint. No JavaScript runs per frame: main.js's changeScreen() removes a
+     screen with a bare remove() and offers no teardown hook, so a rAF loop
+     started for this would outlive the screen forever. CSS animations are
+     destroyed with the element that owns them.
+   ========================================================================== */
+
+.title-carousel {
+    position: relative;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    /* The front card's unscaled width. 24vw keeps the 3.564 W ring inside a
+       phone in portrait; 14vh keeps it inside a phone in landscape, where
+       height is the scarce axis. */
+    --tc-w: clamp(64px, min(24vw, 14vh), 160px);
+    --tc-h: calc(var(--tc-w) * 1.5);          /* the art is exactly 2:3 */
+    --tc-r: calc(var(--tc-w) * 1.154);        /* orbit radius */
+    --tc-p: calc(var(--tc-w) * 3.077);        /* perspective distance */
+
+    /* One turn. --tc-step MUST stay equal to -(--tc-spin / 6): it is the
+       phase offset between adjacent cards, and if the two drift apart the
+       scale and fade stop peaking when a card is actually at the front - the
+       cards breathe out of time with the orbit. qa_web_carousel.py checks
+       the arithmetic. */
+    --tc-spin: 24s;
+    --tc-step: -4s;
+
+    animation: tcIn 0.8s 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* A soft pool of light for the ring to sit in. Deliberately a child of
+   .title-carousel and NOT of .tc-stage: inside the perspective root it would
+   become a plane at z = 0 sorted among the cards, tinting the far half and
+   intersecting the near half differently in every engine. Out here it is
+   just a backdrop. */
+.title-carousel::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(var(--tc-w) * 4.4);
+    height: calc(var(--tc-w) * 2.8);
+    transform: translate(-50%, -50%);
+    background: radial-gradient(closest-side,
+        rgba(208, 168, 32, 0.14) 0%,
+        rgba(208, 168, 32, 0.05) 52%,
+        transparent 100%);
+    pointer-events: none;
+}
+
+@keyframes tcIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: none; }
+}
+
+.tc-stage { position: relative; width: 100%; }
+
+/* --- The static arrangement (base; also what reduced motion gets) --------
+   A wrapped, centred row of all six cards at rest. Every card is fully
+   legible and nothing moves. */
+.tc-ring {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: clamp(6px, 1.4vmin, 14px);
+    width: 100%;
+}
+
+.tc-card {
+    position: relative;
+    width: calc(var(--tc-w) * 1.05);
+    height: calc(var(--tc-w) * 1.575);
+}
+
+.tc-inner { position: absolute; inset: 0; }
+
+.tc-face {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--r-md);
+    border: 1px solid var(--gold-hair);
+    background-color: var(--panel-dark);
+    background-size: cover;
+    background-position: center;
+    box-shadow: var(--shadow-deep);
+}
+
+/* At rest there is no reverse to see, and with no 3D context around it a
+   rotateY(180deg) face would simply paint mirrored over the front one. */
+.tc-face-back { display: none; }
+
+/* --- The 3D ring (enhancement) ------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+
+    .title-carousel.tc-motion .tc-stage {
+        height: calc(var(--tc-w) * 2.5);
+        perspective: var(--tc-p);
+        perspective-origin: 50% 50%;
+    }
+
+    .title-carousel.tc-motion .tc-ring {
+        display: block;
+        position: absolute;
+        inset: 0;
+        transform-style: preserve-3d;
+        will-change: transform;
+        animation: tcSpin var(--tc-spin) linear infinite;
+    }
+
+    /* Centred with negative margins rather than translate(-50%, -50%), which
+       would have to be composed ahead of the orbit in the same transform and
+       is easy to get the wrong way round. */
+    .title-carousel.tc-motion .tc-card {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: var(--tc-w);
+        height: var(--tc-h);
+        margin: calc(var(--tc-h) / -2) 0 0 calc(var(--tc-w) / -2);
+        transform-style: preserve-3d;
+        transform: rotateY(calc(var(--i) * 60deg)) translateZ(var(--tc-r));
+    }
+
+    /* The enlargement. It lives on an inner wrapper so it is a scale in the
+       card's OWN plane: applied to .tc-card it would compose outside the
+       orbit and stretch the radius with it, pulling each card off the
+       circle. */
+    .title-carousel.tc-motion .tc-inner {
+        transform-style: preserve-3d;
+        animation: tcPresent var(--tc-spin) linear infinite;
+        animation-delay: calc(var(--i) * var(--tc-step));
+    }
+
+    .title-carousel.tc-motion .tc-face {
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        animation: tcFade var(--tc-spin) linear infinite;
+        animation-delay: calc(var(--i) * var(--tc-step));
+    }
+
+    /* Every card is double-sided, so the half of the ring that has turned
+       past edge-on shows card BACKS. Single-faced, it would show the role
+       art mirrored instead - readable enough to notice and wrong. */
+    .title-carousel.tc-motion .tc-face-back {
+        display: block;
+        transform: rotateY(180deg);
+    }
+
+    /* The front card is the one that has to read at a glance, so it gets a
+       little more separation from the backdrop than the others. box-shadow,
+       not filter - see the DEPTH ORDER note. */
+    .title-carousel.tc-motion .tc-face-front {
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.72),
+                    0 0 0 1px rgba(208, 168, 32, 0.18);
+    }
+}
+
+@keyframes tcSpin {
+    from { transform: rotateY(0deg); }
+    to   { transform: rotateY(360deg); }
+}
+
+/* Phase 0 = at the front. Each 16.667% is a further 60 deg round the ring,
+   so 50% is the rear. S = 0.7925 + 0.2075 cos(phi). */
+@keyframes tcPresent {
+    0%      { transform: scale(1); }
+    16.667% { transform: scale(0.896); }
+    33.333% { transform: scale(0.689); }
+    50%     { transform: scale(0.585); }
+    66.667% { transform: scale(0.689); }
+    83.333% { transform: scale(0.896); }
+    100%    { transform: scale(1); }
+}
+
+/* Aerial perspective: the far side of the ring hazes into the backdrop. */
+@keyframes tcFade {
+    0%      { opacity: 1; }
+    16.667% { opacity: 0.9; }
+    33.333% { opacity: 0.55; }
+    50%     { opacity: 0.38; }
+    66.667% { opacity: 0.55; }
+    83.333% { opacity: 0.9; }
+    100%    { opacity: 1; }
 }

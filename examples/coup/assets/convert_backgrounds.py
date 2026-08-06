@@ -62,7 +62,22 @@ TARGET_MEDIAN = 64.0
 # Never lift harder than this. A gamma below it crushes the highlights flat
 # and turns a moody interior into grey soup - the art is SUPPOSED to be dim,
 # it just cannot be invisible.
-MIN_GAMMA = 0.52
+#
+# Lowered 0.52 -> 0.46 because B4_connecting was the ONLY scene the clamp
+# still bound: source median 15, it stopped at 57 while every other scene
+# reached the 64 target. That screen was reported as "SO DARK" twice, and it
+# is the one where a player is left waiting with nothing else to look at.
+#
+# The cost was measured before changing it, by sweeping the floor and
+# counting pixels crushed to within 2 levels of black:
+#   MIN_GAMMA  0.52   0.46   0.42   0.38
+#   median     57.0   63.0   63.0   63.0
+#   crushed    0.36%  0.35%  0.35%  0.35%
+#   blown      0.00%  0.00%  0.00%  0.00%
+# It plateaus at 0.46 - below that the solved gamma (0.49) no longer hits the
+# clamp at all, so a lower floor buys nothing and only risks a future scene
+# being over-lifted. 0.46 is the point where the clamp stops binding.
+MIN_GAMMA = 0.46
 
 
 def lift_shadows(img, name=""):

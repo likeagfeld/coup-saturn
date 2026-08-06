@@ -166,20 +166,31 @@ ok(!!q('.screen-title'), 'title screen rendered');
 ok(!!q('.screen-bg.bg-title'), 'painted B1 backdrop layer present');
 ok(q('.title-wordmark')?.getAttribute('src')?.includes('logo/wordmark.webp'),
     'the real wordmark is used');
-ok(qa('.title-parade .portrait-frame').length === 5,
-    'five character medallions parade');
-ok(qa('.title-parade .portrait-idle').length === 5,
-    'all five portraits carry the 8-frame idle animation class');
+// The portrait parade was replaced by the 3D card ring - same cast, at the
+// size the art was drawn for. See the header of js/screens/title.js.
+//
+// Only the DOM contract is checked here. The ring's geometry, its 3D
+// contract and its asset paths are covered by scripts/qa/qa_web_carousel.py,
+// which unlike this file has no dependencies and can actually be run.
+ok(qa('.tc-ring .tc-card').length === 6,
+    'six cards in the ring - five roles plus the face-down back');
+ok(qa('.tc-card .tc-face-front').length === 6
+    && qa('.tc-card .tc-face-back').length === 6,
+    'every card is double-sided, so the far half shows backs not mirrored art');
 {
-    const p = q('.title-parade .portrait');
-    ok(p.style.backgroundSize === '800% 100%',
-        'portrait strip is sized for 8 frames (800% wide)');
-    ok(p.style.animationDuration === '2667ms',
-        'portrait idle runs at the Saturn-matched 2667 ms per cycle');
-    const staggered = qa('.title-parade .portrait')
-        .map(e => e.style.animationDelay).filter(Boolean);
-    ok(staggered.length === 4, 'four of the five idles are phase-offset');
+    const faces = qa('.tc-face-front').map(e => e.style.backgroundImage);
+    ok(faces.every(b => b.includes('assets/cards/')),
+        'every card face is wired to the card art');
+    ok(!faces.some(b => b.includes('"/assets/')),
+        'no absolute /assets/ URL - those resolve against the LIVE site root');
+    ok(new Set(faces).size === 5,
+        'five distinct role faces (the sixth card is the back, twice over)');
+    const idx = qa('.tc-card').map(e => e.style.getPropertyValue('--i'));
+    ok(idx.join(',') === '0,1,2,3,4,5',
+        'each card carries its --i, which is all the CSS needs to phase it');
 }
+ok(q('#title-carousel').classList.contains('tc-motion'),
+    'the ring is animated when reduced motion is not requested');
 ok(!!q('#btn-play') && !!q('#btn-rules-title'), 'PLAY and RULES buttons wired');
 
 /* ---------------------------------------------------------------------- */
