@@ -85,6 +85,30 @@ export function createLobbyScreen(app) {
     });
 
     preload([BG.table]);
+
+    /* Repaint the roster from the cached lobby state.
+     *
+     * createLobbyScreen() builds an EMPTY list; the only thing that ever
+     * filled it was the COUP_MSG_LOBBY_STATE handler, which populates right
+     * after it calls changeScreen('lobby'). That covers arriving at the
+     * lobby because a lobby-state message arrived - but not RETURNING to it
+     * from the game or the game-over screen, where changeScreen('lobby') is
+     * called on its own. The roster then stayed blank until the server
+     * happened to broadcast again, which is what pressing Ready does. So the
+     * players were there all along and simply were not drawn.
+     *
+     * main.js's changeScreen already does exactly this for the game screen
+     * (`setTimeout(() => renderGameState(this), 50)`); the lobby case just
+     * never got its equivalent.
+     *
+     * Deferred because updateLobbyPlayers() looks the list up by id, and
+     * this element is not in the document until changeScreen appends it. */
+    setTimeout(() => {
+        if (document.getElementById('lobby-players')) {
+            updateLobbyPlayers(app._lobbyPlayers || [], app.myUserId);
+        }
+    }, 0);
+
     return el;
 }
 

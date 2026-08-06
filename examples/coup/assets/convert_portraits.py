@@ -220,12 +220,57 @@ def load_pack_frames(pack_dir, name, frames):
         im = Image.open(path).convert("RGB")
         if im.size != (SPRITE_W, SPRITE_H):
             im = im.resize((SPRITE_W, SPRITE_H), Image.LANCZOS)
-        out.append(im)
+        out.append(repair_edge_columns(im))
 
     # Loop back through the supplied frames if fewer were delivered than asked.
     while len(out) < frames:
         out.append(out[len(out) % len(found)].copy())
     return out
+
+
+
+# A frame cut from a grid can keep a column of its NEIGHBOUR. MEASURED on the
+# delivered portraits: duke frames 1 and 5 carry a right-edge column at
+# brightness 189 against an interior of 61, and frames 4 and 8 the same on the
+# left. It plays back as a white sliver flickering at the edge of the sprite.
+#
+# Ambassador's edges measure 113-148 against 73 - only +75 - and that is rim
+# lighting the artist put there. The threshold sits well above it and well
+# below the artifacts, so real art is never touched.
+EDGE_DELTA = 60
+
+
+def repair_edge_columns(im):
+    """Replace edge columns that are a slice of the neighbouring grid cell."""
+    import numpy as np
+
+    a = np.asarray(im).astype(np.uint8).copy()
+    col = a.astype(float).mean(axis=(0, 2))
+    w = a.shape[1]
+    interior = float(np.median(col[2:-2]))
+    margin = max(1, w // 20)
+
+    # Walk INWARD from each edge and stop at the first normal column, rather
+    # than testing a fixed band. A fixed band picked replacement pixels from
+    # a column that was itself part of the sliver but just under threshold,
+    # which spread the artifact instead of removing it.
+    bad = set()
+    for c in range(w - 1, w - 1 - margin, -1):
+        if col[c] > interior + EDGE_DELTA:
+            bad.add(c)
+        else:
+            break
+    for c in range(margin):
+        if col[c] > interior + EDGE_DELTA:
+            bad.add(c)
+        else:
+            break
+    if not bad:
+        return im
+    good = [c for c in range(w) if c not in bad]
+    for c in sorted(bad):
+        a[:, c, :] = a[:, min(good, key=lambda g: abs(g - c)), :]
+    return Image.fromarray(a)
 
 
 def main():

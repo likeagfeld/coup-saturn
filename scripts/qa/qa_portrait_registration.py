@@ -43,6 +43,13 @@ import sys
 import numpy as np
 from PIL import Image
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__),
+                                "..", "..", "examples", "coup", "assets"))
+try:
+    from convert_portraits import repair_edge_columns
+except Exception:
+    repair_edge_columns = None
+
 # One pixel of play is the quantisation floor once a 64 px frame has been
 # resampled; beyond that the eye reads it as the figure bobbing.
 MAX_DRIFT_PX = 1
@@ -84,8 +91,15 @@ def saturn_sets():
         files = sorted(glob.glob(os.path.join(SATURN_DIR, ch, "*.png")))
         if len(files) < 2:
             continue
-        frames = [np.asarray(Image.open(f).convert("L"), dtype=float)
-                  for f in files]
+        # Through the converter's edge repair, because that is what reaches
+        # the disc. Scanning the untouched masters measures art nobody
+        # ships, and reported RED against a build that was already correct -
+        # the same scoping mistake qa_fidelity made by comparing against raw
+        # sources. A gate must measure the artefact, not the input.
+        ims = [Image.open(f).convert("RGB") for f in files]
+        if repair_edge_columns is not None:
+            ims = [repair_edge_columns(i) for i in ims]
+        frames = [np.asarray(i.convert("L"), dtype=float) for i in ims]
         out.append((f"saturn/{ch}", frames, max(3, frames[0].shape[1] // 12)))
     return out
 
@@ -114,6 +128,41 @@ def main():
         return 2
 
     fails = []
+
+    # --- bright edge columns ---------------------------------------------
+    # Reported as "faint white vertical slice clips on the right side of a
+    # couple of the duke animation frames" plus "a sliver in one of the
+    # contessa frames". MEASURED on the web strips before repair:
+    #   duke     frames 1,2,5,6  cols 238-239 at 244-250 vs interior 61
+    #   contessa frames 1,2,3,5,6,7  col 239 at 191-211 vs interior 47
+    # The first threshold was +120, and it MISSED what the user still saw:
+    # duke frames 2 and 6 carry three columns at 155-156 against 61, only
+    # +94. Worse, the repair then sourced its replacement from column 237 -
+    # itself part of the sliver but under threshold - and propagated the
+    # artifact instead of removing it.
+    #
+    # +60 catches those (+94) and still leaves genuine rim lighting alone
+    # (duke's remaining edge measures +25 after repair). Ambassador's edge
+    # columns alternate sides frame to frame - R, L, R, L - which is a
+    # grid-cut signature, not lighting, so those are repaired too.
+    EDGE_DELTA = 60
+    for name, frames, _ in sets:
+        bad = []
+        for i, fr in enumerate(frames):
+            col = fr.mean(axis=1) if fr.ndim == 1 else fr.mean(axis=0)
+            col = fr.mean(axis=0)
+            interior = float(np.median(col[2:-2]))
+            n = fr.shape[1]
+            m = max(1, n // 20)
+            for idx in list(range(m)) + list(range(n - m, n)):
+                if col[idx] > interior + EDGE_DELTA:
+                    bad.append((i + 1, idx, round(float(col[idx])),
+                                round(interior)))
+        if bad:
+            fails.append(f"{name}: bright edge column(s) {bad} - a slice of "
+                         f"the neighbouring grid cell, visible as a white "
+                         f"sliver during playback")
+
     for name, frames, radius in sets:
         shifts, rx, ry = drift(frames, radius)
         worst = max(rx, ry)

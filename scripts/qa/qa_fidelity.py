@@ -39,11 +39,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "examples", "coup", "assets"))
 try:
     from convert_backgrounds import lift_shadows, trim_panel_seam
-    from convert_portraits import stretch_frames
+    from convert_portraits import stretch_frames, repair_edge_columns
 except ImportError:
     lift_shadows = None
     trim_panel_seam = None
     stretch_frames = None
+    repair_edge_columns = None
 
 PSNR_MIN = 26.0        # below this, degradation is visible
 PALETTE_USE_MIN = 0.85  # must use at least 85% of available slots
@@ -188,6 +189,15 @@ def check_portrait(name, src_dir, hdr_data, hdr_spr):
     # before quantizing (convert_portraits.stretch_frames), which is what
     # fixed them being washed out - without it here they read as 15-19 dB.
     ref = Image.open(frames[0]).convert("RGB")
+    # The reference must carry EVERY deliberate transform the converter
+    # applies, or a correct conversion scores as a regression. This gate has
+    # been caught by that three times already (shadow lift, seam trim,
+    # portrait stretch). Edge repair is the fourth: duke's reference still
+    # held the white neighbour columns that the converter now removes, and he
+    # scored 20.5 dB against 32-36 for everyone else - a depressed baseline
+    # that would have hidden a real future regression under it.
+    if repair_edge_columns is not None:
+        ref = repair_edge_columns(ref)
     if stretch_frames is not None:
         ref = stretch_frames([ref])[0][0]
     ref = ref.resize((w, h), Image.LANCZOS)
