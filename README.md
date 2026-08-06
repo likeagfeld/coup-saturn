@@ -10,6 +10,42 @@ A full Saturn port of the popular bluffing-and-deduction card game **Coup**, pla
 
 ---
 
+## Screens
+
+Captured from the Saturn build running on hardware-accurate emulation.
+
+<p align="center">
+  <img src="docs/images/screens/1-title.png" alt="Title screen — the six influence cards orbiting in 3D" width="720">
+  <br><em>Title — the six influence cards orbit a vertical axis, the nearest one enlarged</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/screens/2-connecting.png" alt="Connecting over the NetLink modem" width="480">
+  <br><em>Dialling the server over the NetLink modem</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/screens/3-name-entry.png" alt="Entering a player name" width="480">
+  <br><em>Name entry</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/screens/4-lobby.png" alt="Lobby with four players ready" width="720">
+  <br><em>Lobby — humans and bots, ready state per seat</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/screens/5-game.png" alt="Choosing an action at the table" width="720">
+  <br><em>The table — action select, opponents' hidden influence, coins and the event log</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/screens/6-victory.png" alt="Victory screen with a scrollable match recap" width="720">
+  <br><em>Victory — with a scrollable recap of how the match ended</em>
+</p>
+
+---
+
 ## Download
 
 Grab the latest build from the [**Releases**](../../releases) page:
