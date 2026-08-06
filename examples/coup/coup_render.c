@@ -3302,7 +3302,33 @@ void coup_render_screen(const coup_state_t* st)
                 coup_audio_restore_music();
             }
 
-            saturn_fade_start(SATURN_FADE_BLACK, SATURN_FADE_NONE, 12, false);
+            /* The CONNECTING screen gets no fade - it is shown at full
+             * brightness immediately.
+             *
+             * A 12-FRAME fade needs 12 rendered frames, and this screen does
+             * not get them. main_saturn.c drives the connect sequence with
+             * ONE render_and_sync() per stage:
+             *
+             *     set_connect_stage(2, "Dialing server...");
+             *     render_and_sync();              <- one frame
+             *     result = modem_dial(...);       <- blocks for SECONDS
+             *
+             * so by "Dialing server..." roughly three ticks have elapsed and
+             * the screen is still about three-quarters black - then the dial
+             * blocks and freezes it there. Once connected the normal 60 Hz
+             * loop resumes and the fade completes in 12 frames, which is
+             * exactly the reported behaviour: crazy dark until past dialing,
+             * then normal.
+             *
+             * Raising the art's brightness and the panel's fill both helped
+             * and neither could fix this, because the darkness was the fade
+             * sitting unfinished, not the pixels underneath. */
+            if (st->screen == COUP_SCREEN_CONNECTING) {
+                saturn_fade_clear();
+            } else {
+                saturn_fade_start(SATURN_FADE_BLACK, SATURN_FADE_NONE, 12,
+                                  false);
+            }
         }
         saturn_fade_tick();
     }
