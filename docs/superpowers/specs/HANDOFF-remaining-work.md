@@ -151,3 +151,60 @@ per glyph, 95 glyphs from ASCII 32, `bytes_per_row_1bpp = 1`. Register it in
 
 **This is an upgrade, not an outstanding fix.** Body text is already the
 custom Alagard face everywhere; the built-in 8×8 is no longer drawn anywhere.
+
+---
+
+# Open items as of 2026-08-06
+
+## 1. RBG0 (Approach C) — needs two emulator runs, nothing else
+
+Built, host-gated, committed, and OFF by default behind
+`-DCOUP_RBG0_TITLE_DEMO`. The shipped disc is unaffected.
+
+**Build the demo to a SCRATCH path, not over `build/coup_game/`** — that
+directory holds the disc the user is currently testing, and overwriting it
+with a demo build would silently change what they are looking at.
+
+```
+CCFLAGS_EXTRA="-DCOUP_RBG0_TITLE_DEMO" bash scripts/docker-saturn-build.sh examples/coup/saturn
+mkdir -p build/rbg0_demo && cp examples/coup/saturn/_build/{track01.bin,game.cue} build/rbg0_demo/
+cp build/coup_game/rebellion.wav build/rbg0_demo/
+python scripts/qa/qa_rbg0_witness.py          # execution only, not display
+python scripts/qa/qa_retroarch.py --shot build/rbg0_demo/game.cue --seconds 15 \
+       --out build/qa/screens/title_rbg0.png
+python scripts/qa/qa_rbg0_legibility.py       # THE gate
+```
+Then rebuild WITHOUT the flag before shipping anything.
+
+`qa_rbg0_legibility.py` currently returns INCONCLUSIVE because no capture
+exists. Its self-test already proved the measure discriminates (RED 9.6 on
+corrupted text, GREEN 141.0 on legible, threshold 60.0), so either verdict
+from a real capture is trustworthy. A RED is a FINDING — priority/palette
+worth one iteration — not automatically a bug to chase.
+
+## 2. The sheen and rim-light are a DECISION, not a task
+
+`saturn_vdp1_draw_sprite_gouraud()` exists and is tested. It cannot be
+pointed at the current sprites: ST-013-R3 (VDP1_Manual.txt:4091-4094) says
+colour calculation on a colour-bank sprite is "not guaranteed", and every
+sprite here is 4bpp bank mode.
+
+Lighting the wordmark sheen therefore costs a texture re-encode to RGB555:
+**8,192 -> 32,768 bytes** for a 256x64 wordmark, +24 KB of VDP1 VRAM for one
+cosmetic effect. The portrait rim-light needs that AND a distorted-sprite
+gouraud variant (portraits draw through the scaled path).
+
+`COUP_GRD_SHEEN` stays listed as undrawn in `qa_animations_wired.py` so the
+gap keeps announcing itself. Do not pay the 24 KB without deciding it is
+worth it.
+
+## 3. Still unbuilt
+
+Winner-portrait zoom, game-over mesh dissolve, challenge flash-white.
+
+## 4. Web staging
+
+`deploy/nginx-saturncoup.conf` has an additive `/staging/` block; the
+redesigned client goes in `web-staging/` and `web/` must stay untouched.
+Deploy is a human step: copy the tree to `/opt/coup-server/web-staging/`,
+then `nginx -t && systemctl reload nginx`.
