@@ -768,6 +768,12 @@ void coup_render_screen(const coup_state_t* st);
  * same ST-013-R3 citation as H_MIN above. */
 #define COUP_CAROUSEL_W_FLOOR 6
 
+/* Frames per phase step. One revolution is COUP_SHADING_PERIOD phase steps,
+ * so the period is 120 * 12 = 1440 frames = 24 s at 60 Hz, matching the web
+ * ring's --tc-spin. Undivided it was 2 s - twelve times faster than the web,
+ * and too quick to read a card as it passes. */
+#define COUP_CAROUSEL_SLOWDOWN 12
+
 typedef struct {
     int cx, cy;      /* card centre, screen px */
     int w, h;        /* display size, px - always > 0 */

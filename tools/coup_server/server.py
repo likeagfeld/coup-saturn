@@ -1136,6 +1136,38 @@ class CoupServer:
         return [info for info in self.clients.values() if info.authenticated]
 
     def broadcast_lobby_state(self):
+        """Send the lobby roster to everyone.
+
+        REFUSES to send while a game is active, and that guard is the whole
+        point of this function existing as a choke point.
+
+        REPORTED: a player was mid-game on mobile, a Saturn client connected,
+        and the game "stopped progressing" for them.
+
+        Authenticating calls this (the WELCOME_BACK path), and it was
+        unguarded - 8 of its 9 call sites were. broadcast() goes to EVERY
+        client, including players inside an active match, and LOBBY_STATE is
+        the one message that is destructive there: both clients rebuild their
+        player identity from it. coup_game.c:2440-2453 overwrites
+        players[i].id with WIRE ids and recomputes is_self, while my_id is
+        still a seat index; the web client calls _rebuildNameMapping() the
+        same way. That is the identical corruption already documented behind
+        the VICTORY/DEFEAT banner bug, only this time it lands mid-game
+        instead of on the game-over screen, so the in-game view stops
+        tracking who is who.
+
+        The disconnect path at the top of this file was already guarded with
+        exactly this condition; the other eight sites simply never were.
+        Guarding inside the function rather than at each caller means a future
+        caller cannot reintroduce it by forgetting.
+
+        _end_game() clears game_active BEFORE it broadcasts, so returning to
+        the lobby after a match still works.
+        """
+        if self.game_active:
+            log.debug("Suppressed lobby-state broadcast during an active game")
+            return
+
         players = []
         for info in self.get_auth_players():
             players.append({"id": info.user_id, "name": info.username,

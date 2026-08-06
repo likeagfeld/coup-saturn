@@ -1068,7 +1068,21 @@ void coup_carousel_layout(int frame, int center_x, int center_y, int radius_x,
     }
 
     for (i = 0; i < COUP_CAROUSEL_COUNT; i++) {
-        int raw = frame + i * spacing;
+        /* frame / COUP_CAROUSEL_SLOWDOWN, so one revolution takes
+         * 120 * 12 = 1440 frames = 24 s at 60 Hz - the same period as the
+         * web ring's --tc-spin. Undivided, a revolution was 120 frames = 2 s,
+         * twelve times faster than the web and far too quick to read a card
+         * as it passes. */
+        /* FLOOR division, not C's truncate-toward-zero. -1/12 is 0 in C,
+         * not -1, so a plain divide makes two adjacent negative frames map
+         * to the same phase step and the layout stops being periodic below
+         * zero - which the free-running-counter test caught immediately. */
+        int step = frame / COUP_CAROUSEL_SLOWDOWN;
+        int raw;
+        if (frame < 0 && (frame % COUP_CAROUSEL_SLOWDOWN) != 0) {
+            step--;
+        }
+        raw = step + i * spacing;
         int phase = raw % COUP_SHADING_PERIOD;
         int lateral, depth;
         int h, w, abs_depth;
@@ -1154,8 +1168,21 @@ void coup_carousel_sort(const coup_carousel_card_t cards[COUP_CAROUSEL_COUNT],
  * card_id 0..4 are the five character faces in COUP_CHAR_* order (which is
  * also coup_fx_data.h's COUP_UI_DUKE.. COUP_UI_CONTESSA order - both are
  * generated/declared in that same fixed sequence); card_id 5 is the back. */
-static int coup_carousel_card_ui(int card_id)
+static int coup_carousel_card_ui(int card_id, int depth)
 {
+    /* A card past edge-on shows its BACK, exactly as the web ring does.
+     *
+     * This used to return the face regardless of which way the card was
+     * pointing, so the far half of the ring drew the FRONT art - and because
+     * the quad has crossed over by then, it drew it MIRRORED. Reported as
+     * "the cards dont render the card back image, just a mirrored image of
+     * the front", which is precisely what it was.
+     *
+     * depth is +1024 nearest the camera and -1024 furthest, so its sign is
+     * the facing test with no extra state to keep. */
+    if (depth < 0) {
+        return COUP_UI_CARD_BACK;
+    }
     if (card_id < 0 || card_id >= COUP_NUM_CHARACTERS) {
         return COUP_UI_CARD_BACK;
     }
@@ -1182,7 +1209,7 @@ void coup_carousel_draw(int frame, int cx, int cy, int radius_x)
         uint32_t tex_offset;
         int bank;
 
-        if (!coup_ui_texture(coup_carousel_card_ui(c->card_id),
+        if (!coup_ui_texture(coup_carousel_card_ui(c->card_id, c->depth),
                              &tex_offset, &bank)) {
             continue;
         }

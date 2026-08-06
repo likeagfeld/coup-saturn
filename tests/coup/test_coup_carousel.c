@@ -16,6 +16,15 @@
 
 #include "cui_test_framework.h"
 #include "coup.h"
+
+/* The layout advances one phase step every COUP_CAROUSEL_SLOWDOWN frames, so
+ * a full revolution is this many FRAMES - not COUP_SHADING_PERIOD, which is
+ * the number of phase STEPS. These two tests originally used the phase
+ * period as if it were the frame period; that was correct only while the
+ * slowdown was 1, and it failed the moment the carousel was slowed to match
+ * the web's 24 s revolution. The property under test - a free-running
+ * counter never drifts - is unchanged. */
+#define CAROUSEL_TRUE_PERIOD (COUP_SHADING_PERIOD * COUP_CAROUSEL_SLOWDOWN)
 #include "coup_shading.h"
 
 #include <limits.h>
@@ -292,9 +301,9 @@ CUI_TEST(layout_is_identical_two_periods_apart)
         int i;
 
         coup_carousel_layout(frames[k], FIX_CX, FIX_CY, FIX_RADIUS, a);
-        coup_carousel_layout(frames[k] + COUP_SHADING_PERIOD,
+        coup_carousel_layout(frames[k] + CAROUSEL_TRUE_PERIOD,
                             FIX_CX, FIX_CY, FIX_RADIUS, b);
-        coup_carousel_layout(frames[k] + 2 * COUP_SHADING_PERIOD,
+        coup_carousel_layout(frames[k] + 2 * CAROUSEL_TRUE_PERIOD,
                             FIX_CX, FIX_CY, FIX_RADIUS, c);
 
         for (i = 0; i < COUP_CAROUSEL_COUNT; i++) {
@@ -316,9 +325,9 @@ CUI_TEST(layout_survives_a_huge_free_running_counter_without_drift)
     long periods = 500000; /* comfortably inside int range * PERIOD */
 
     coup_carousel_layout(base, FIX_CX, FIX_CY, FIX_RADIUS, small);
-    coup_carousel_layout((int)(base + periods * COUP_SHADING_PERIOD),
+    coup_carousel_layout((int)(base + periods * CAROUSEL_TRUE_PERIOD),
                         FIX_CX, FIX_CY, FIX_RADIUS, huge_pos);
-    coup_carousel_layout((int)(base - periods * COUP_SHADING_PERIOD),
+    coup_carousel_layout((int)(base - periods * CAROUSEL_TRUE_PERIOD),
                         FIX_CX, FIX_CY, FIX_RADIUS, huge_neg);
 
     for (i = 0; i < COUP_CAROUSEL_COUNT; i++) {
