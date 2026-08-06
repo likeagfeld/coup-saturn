@@ -112,8 +112,14 @@ export function createTitleScreen(app) {
             + '</div>';
         card.querySelector('.tc-face-front').style.backgroundImage =
             `url("${src}")`;
+        // The reverse carries the SAME role art, not the card back.
+        // Backs on the far half meant three of the six cards showed no role
+        // at all at any moment, dimmed to 0.38 - reported as "occasional
+        // blank cards". The point of the ring is to show the roles, so both
+        // sides show one. CSS counter-mirrors it (rotateY(180deg) alone
+        // would paint the art reversed).
         card.querySelector('.tc-face-back').style.backgroundImage =
-            `url("${CARD_BACK}")`;
+            `url("${src}")`;
         ring.appendChild(card);
     });
 

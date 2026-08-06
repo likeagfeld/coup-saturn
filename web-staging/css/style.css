@@ -1865,7 +1865,12 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
        art mirrored instead - readable enough to notice and wrong. */
     .title-carousel.tc-motion .tc-face-back {
         display: block;
-        transform: rotateY(180deg);
+        /* scaleX(-1) counter-mirrors the 180 flip, so the reverse shows the
+           role art the right way round instead of reversed. Without it the
+           choice is a mirrored face or a blank-looking card back - and the
+           back was reported as "occasional blank cards", because three of
+           the six were showing no role at any moment. */
+        transform: rotateY(180deg) scaleX(-1);
     }
 
     /* The front card is the one that has to read at a glance, so it gets a
@@ -1898,9 +1903,9 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
 @keyframes tcFade {
     0%      { opacity: 1; }
     16.667% { opacity: 0.9; }
-    33.333% { opacity: 0.55; }
-    50%     { opacity: 0.38; }
-    66.667% { opacity: 0.55; }
+    33.333% { opacity: 0.72; }
+    50%     { opacity: 0.62; }
+    66.667% { opacity: 0.72; }
     83.333% { opacity: 0.9; }
     100%    { opacity: 1; }
 }
