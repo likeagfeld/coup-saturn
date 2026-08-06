@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover + the env(safe-area-inset-*) padding in style.css
+         is what keeps the UI clear of a notch / home indicator. -->
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#08081A" />
+    <meta name="color-scheme" content="dark" />
+
+    <title>COUP - Saturn NetLink Edition [STAGING]</title>
+
+    <!-- Every URL on this page is RELATIVE. Served from /staging/ they resolve
+         under /staging/; an absolute /assets/... would resolve against the LIVE
+         site root and silently serve the old art. See js/assets.js. -->
+    <link rel="stylesheet" href="css/style.css?v=staging-20260806" />
+    <link rel="icon" href="assets/ui/crown.webp" type="image/webp" />
+
+    <!-- The title screen's two heaviest images, fetched in parallel with the
+         module graph so the first paint is not a bare navy rectangle. -->
+    <link rel="preload" as="image" href="assets/bg/title.webp" />
+    <link rel="preload" as="image" href="assets/logo/wordmark.webp" />
+</head>
+<body>
+    <div id="app"></div>
+    <script type="module" src="js/main.js?v=staging-20260806"></script>
+    <noscript>
+        <p style="color:#F9E2AF;font-family:sans-serif;padding:24px">
+            Coup needs JavaScript enabled.
+        </p>
+    </noscript>
+</body>
+</html>
