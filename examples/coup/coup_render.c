@@ -241,7 +241,7 @@ int coup_centre_x(int container_w, int text_w)
  * two are not variations on a theme - one shows the label and one does not,
  * and a player shown "Bartholom" has not been shown their name. Where a label
  * genuinely cannot be made to fit by moving its box or wrapping it, it is
- * drawn smaller here rather than shortened. coup_ui.h's COUP_FONT_CONDENSED
+ * drawn smaller here rather than shortened. coup_ui.h's COUP_FONT_BODY
  * carries the measurement for why that is the only remaining option for a
  * 39-character log line on a 320 px screen.
  *
@@ -766,7 +766,7 @@ int coup_wrap_row(const char* src, int max_chars, int row,
  * label - a bounded copy into a display buffer, which is a truncation whose
  * length happens to be written in the declaration instead of in the format
  * string. Its three callers (the seat name and two phase titles) now show the
- * whole text: the names in COUP_FONT_CONDENSED, the titles wrapped by
+ * whole text: the names in COUP_FONT_BODY, the titles wrapped by
  * coup_wrap_row(). Deleted rather than left unused so it cannot be reached
  * for again; a genuinely bounded copy belongs in the game layer next to
  * coup_log(), which owns COUP_LOG_LINE_LEN. */
@@ -1815,13 +1815,13 @@ static void coup_render_connecting(const coup_state_t* st)
              * of usable width (that would need the entire 320 px screen with
              * no border), and these rows are a modem-status list with no
              * vertical room to wrap into - the four of them run 120..158 and
-             * the cancel plate starts at 164. In COUP_FONT_CONDENSED the same
+             * the cancel plate starts at 164. In COUP_FONT_BODY the same
              * line is (39-1)*4 + 8 = 160 px, ending at 200, well inside the
              * panel, with every character present. */
             draw_text_font(L->log_list.x,
                            L->log_list.base_y + li * L->log_list.spacing,
                            st->log[idx], COUP_TEXT_GRAY,
-                           COUP_FONT_CONDENSED);
+                           COUP_FONT_BODY);
         }
     }
 
@@ -2321,12 +2321,12 @@ static void render_single_seat(const coup_seat_layout_t* seat,
      * the left and right screen edges around the 176 px centre column, and
      * 2*68 + 176 + two 4 px gutters is the whole 320. A 15-character name is
      * 120 px in the body face and is one token, so neither widening nor
-     * wrapping applies. In COUP_FONT_CONDENSED it is (15-1)*4 + 8 = 64 px,
+     * wrapping applies. In COUP_FONT_BODY it is (15-1)*4 + 8 = 64 px,
      * which is exactly the span from the 4 px text inset to the box edge -
      * and the last glyph's ink occupies only the left half of its 8 px cell,
      * so the visible name ends ~4 px inside the box. */
     draw_text_font(seat->name_x, seat->name_y, p->name, name_color,
-                   COUP_FONT_CONDENSED);
+                   COUP_FONT_BODY);
 
     /* Card abbreviations */
     if (!p->alive) {
@@ -2920,11 +2920,11 @@ static void render_your_hand(const coup_state_t* st)
      * 15-character name in any 8 px face - and the cards cannot move
      * vertically either, being 72 px tall in a 74 px panel. WRAPPING: a name
      * is a single token, and coup_wrap_row() will not break inside a word
-     * because that is just truncation again. In COUP_FONT_CONDENSED the name
+     * because that is just truncation again. In COUP_FONT_BODY the name
      * is (15-1)*4 + 8 = 64 px, ending at 192, clear of the card by 4 px. */
     if (!self->alive) {
         draw_text_font(H->name_x, H->name_y, self->name, COUP_TEXT_GRAY,
-                       COUP_FONT_CONDENSED);
+                       COUP_FONT_BODY);
         CUI_DISPLAY()->draw_text_sprite(H->coins_x, H->coins_y, "DEAD", COUP_TEXT_RED);
         return;
     }
@@ -2933,7 +2933,7 @@ static void render_your_hand(const coup_state_t* st)
     {
         uint32_t name_color = is_my_turn ? COUP_TEXT_GREEN : COUP_TEXT_WHITE;
         draw_text_font(H->name_x, H->name_y, self->name, name_color,
-                       COUP_FONT_CONDENSED);
+                       COUP_FONT_BODY);
     }
 
     /* Card 0 */
@@ -3092,12 +3092,12 @@ static void render_game_log(const coup_state_t* st)
          * panel, a 4 px margin, a full line and an arrow that fits, which is
          * why the previous pass reached for a trim.
          *
-         * In COUP_FONT_CONDENSED the line is 160 px and ends at 164, clearing
+         * In COUP_FONT_BODY the line is 160 px and ends at 164, clearing
          * the arrow by 144 px, with all 39 characters on screen. The row
          * pitch is unchanged: this face has the same 8x8 cell as the body
          * face and only halves the advance. */
         draw_text_font(GL->text_x, py, st->log[ring_idx], log_color,
-                       COUP_FONT_CONDENSED);
+                       COUP_FONT_BODY);
     }
 }
 
@@ -3405,13 +3405,13 @@ static void coup_render_game_over(const coup_state_t* st)
              * line in the body face ran from 38 to 350 - 54 px past the
              * panel's right edge at 296, and 30 px past the screen. Widening
              * cannot recover that: 14 px of marker column plus 312 px of line
-             * needs 326 px before any border. In COUP_FONT_CONDENSED the line
+             * needs 326 px before any border. In COUP_FONT_BODY the line
              * is 160 px, ending at 198, inside the panel with 98 px to spare
              * and the marker column intact. This is the screen every offline
              * match ends on, so it is the one whose text gets read most. */
             draw_text_font(panel_x + 14, y, st->log[idx],
                            last ? COUP_TEXT_GOLD : COUP_TEXT_GRAY,
-                           COUP_FONT_CONDENSED);
+                           COUP_FONT_BODY);
         }
 
         if (total > max_rows) {

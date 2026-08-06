@@ -79,6 +79,31 @@ TARGET_MEDIAN = 64.0
 # being over-lifted. 0.46 is the point where the clamp stops binding.
 MIN_GAMMA = 0.46
 
+# Black floor, applied AFTER the gamma lift. Nothing in a scene renders below
+# this luminance.
+#
+# Reported: the play room "looks okay on emulator but on TV it's too dark".
+# That difference is the whole point - an LCD still resolves detail in deep
+# shadow, a CRT crushes it to indistinguishable black. MEASURED on the game
+# table: 14.8% of the image sat below luminance 32 and 7.2% below 16, so a
+# seventh of the screen was a void on real hardware while looking fine in the
+# emulator.
+#
+# Gamma cannot fix this - it lifts MIDTONES, and the median was already on
+# target at 64. Only a floor moves the blacks.
+#
+# Swept against the crush threshold:
+#   floor    0    20    26    32    38
+#   p1     0.0  20.0  26.0  32.0  38.0
+#   <32%  11.2   3.5   2.0   0.0   0.0
+#   p99  170.0 176.7 178.7 180.7 182.7
+#
+# 32 is where the crush zone empties completely, and it costs 10 luma at the
+# top end - the highlights barely move because the floor compresses INTO the
+# existing range rather than shifting it. Below 32 some pixels stay in the
+# zone; above it, contrast is spent for nothing.
+SHADOW_FLOOR = 32
+
 
 def lift_shadows(img, name=""):
     """Gamma-lift a scene that is too dark to read, and only that far.
@@ -97,7 +122,11 @@ def lift_shadows(img, name=""):
             break
 
     if median >= TARGET_MEDIAN or median <= 0:
-        return img, 1.0
+        # Still floor it - a bright scene has deep shadows too, and the CRT
+        # crushes them just the same.
+        flat = [SHADOW_FLOOR + int(round(i * (255.0 - SHADOW_FLOOR) / 255.0))
+                for i in range(256)]
+        return img.point(flat * 3), 1.0
 
     # out = 255 * (in/255)^gamma ; solve for the gamma that puts the median
     # exactly on target, then clamp.
@@ -109,6 +138,8 @@ def lift_shadows(img, name=""):
 
     lut = [min(255, int(round(255.0 * ((i / 255.0) ** gamma))))
            for i in range(256)]
+    lut = [SHADOW_FLOOR + int(round(v * (255.0 - SHADOW_FLOOR) / 255.0))
+           for v in lut]
     return img.point(lut * 3), gamma
 
 
@@ -316,9 +347,17 @@ def convert(src_path):
     src_palette = quant.getpalette()[: MAX_COLORS * 3]
     indices = quant.tobytes()   # P-mode: raw palette indices, one byte each
 
+    # The quantizer returns FEWER entries than requested when the image has
+    # fewer distinct colours - and SHADOW_FLOOR makes that reachable, because
+    # compressing the range merges colours that used to be distinct. Reading
+    # a fixed MAX_COLORS entries then runs off the end. convert_effects.py
+    # already guards this; this converter did not, and the floor is what
+    # exposed it.
+    available = len(src_palette) // 3
+
     # Shift every index up by RESERVED_INDICES so index 0 stays transparent.
     palette = [0x0000] * 256
-    for i in range(MAX_COLORS):
+    for i in range(min(MAX_COLORS, available)):
         r, g, b = src_palette[i * 3: i * 3 + 3]
         palette[i + RESERVED_INDICES] = to_rgb555(r, g, b)
 
