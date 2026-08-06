@@ -4,6 +4,10 @@
 
 A full Saturn port of the popular bluffing-and-deduction card game **Coup**, playable online via the Sega NetLink modem against other Saturn players — or cross-play against players on web browsers and mobile phones.
 
+<p align="center">
+  <img src="docs/images/coup-saturn-boxart.png" alt="Coup — Sega Saturn boxart" width="380">
+</p>
+
 ---
 
 ## Download
