@@ -459,6 +459,137 @@ int  coup_centre_x(int container_w, int text_w);
  * handler clamps scrolling to exactly what the renderer draws. */
 #define COUP_GAMEOVER_RECAP_ROWS 5
 
+/*============================================================================
+ * Card-reveal state machine
+ *
+ * Reveals in this client are instantaneous: a card's character changes in the
+ * state and the next frame draws the new face. That left nowhere to ask "this
+ * card is at frame 7 of 12 of its reveal", which is why the distorted-sprite
+ * flip in pal/saturn/saturn_distort.c sat built, tested and linked with no
+ * caller. This machine supplies that missing time axis.
+ *
+ * It is driven purely by OBSERVING coup_state_t transitions, exactly as
+ * coup_fx_on_transition() already is, so no wire message, message format or
+ * rule-engine behaviour changes (spec D9 - the server stays turnkey).
+ *
+ * The two sequences come from the design doc
+ * (docs/superpowers/specs/2026-08-04-saturn-visual-facelift-design.md
+ * section 4.2 "Game"):
+ *   reveal          - "distorted-sprite Y-axis flip (trapezoid collapse to
+ *                      the centre line over 12 frames, texture swap at the
+ *                      midpoint, then expand)" from the card back to the
+ *                      revealed face
+ *   influence loss  - "card flip to back + mesh-dissolve out": the same flip
+ *                      run face -> back, then the back drawn with CMDPMOD's
+ *                      Mesh Enable bit (ST-013-R3 section 6.3)
+ *
+ * Pure - no hardware access, unit tested in tests/coup/test_coup_reveal.c.
+ *============================================================================*/
+
+/* Frames per phase. 12 is the design doc's figure for the flip; the dissolve
+ * matches it so a loss reads as one two-beat gesture (0.40 s at 60 Hz). */
+#define COUP_REVEAL_FLIP_FRAMES     12
+#define COUP_REVEAL_DISSOLVE_FRAMES 12
+
+/* One slot per card of per seat. players[] is a fixed array, so this is a
+ * fixed 14 - static allocation, no malloc. */
+#define COUP_REVEAL_SLOTS (COUP_MAX_PLAYERS * COUP_CARDS_PER_PLAYER)
+
+/* Authored size of every card asset - the back and all five faces are 48x72
+ * (examples/coup/saturn/coup_fx_data.h). saturn_distort_encode_flip() feeds
+ * the quad's w/h straight into CMDSIZE as the SOURCE character size, so a
+ * flip is necessarily drawn at the art's own size; the module takes no
+ * separate destination size. Named here so the renderer and the tests that
+ * gate it cannot disagree about it. */
+#define COUP_CARD_ART_W 48
+#define COUP_CARD_ART_H 72
+
+/* What a slot is doing right now, as reported by coup_reveal_stage(). */
+#define COUP_REVEAL_IDLE     0
+#define COUP_REVEAL_FLIP     1   /* distorted-sprite Y-axis flip  */
+#define COUP_REVEAL_DISSOLVE 2   /* mesh-dissolve of the card back */
+
+typedef struct {
+    uint8_t active;   /* 0 = idle */
+    uint8_t step;     /* frames since the sequence started */
+    uint8_t card;     /* character on the face, or COUP_CHAR_NONE */
+    uint8_t is_loss;  /* 1 = flip then dissolve, 0 = flip only */
+} coup_reveal_slot_t;
+
+typedef struct {
+    coup_reveal_slot_t slots[COUP_REVEAL_SLOTS];
+    uint8_t prev[COUP_REVEAL_SLOTS];   /* last observed card per slot */
+    uint8_t seeded;                    /* prev[] holds a real observation */
+} coup_reveal_t;
+
+/** Clear every slot and forget the previous observation. */
+void coup_reveal_init(coup_reveal_t* rv);
+
+/** Slot owned by card `card_index` of seat `player_index`, or -1. */
+int  coup_reveal_slot_index(int player_index, int card_index);
+
+/**
+ * Diff the state against the previous observation and start any sequence the
+ * change calls for. Call once per frame, on every screen: leaving the game
+ * screen re-seeds, which is what stops the next deal from looking like six
+ * simultaneous reveals.
+ */
+void coup_reveal_observe(coup_reveal_t* rv, const coup_state_t* st);
+
+/** Advance every running sequence by one frame. Call once per frame. */
+void coup_reveal_tick(coup_reveal_t* rv);
+
+/**
+ * What slot `slot` is doing, with the step and length of the CURRENT phase.
+ *
+ * `out_card` receives the character on the face - the card being revealed,
+ * or for a loss the card being lost - or COUP_CHAR_NONE when it was never
+ * seen (an opponent coup'd out of a card that stayed face down).
+ * Any out_* pointer may be NULL.
+ *
+ * @return COUP_REVEAL_IDLE / _FLIP / _DISSOLVE
+ */
+int  coup_reveal_stage(const coup_reveal_t* rv, int slot,
+                       int* out_step, int* out_frames, int* out_card);
+
+/**
+ * True if this slot is running the influence-loss sequence rather than a
+ * plain reveal.
+ *
+ * The renderer needs it because the two flips run in OPPOSITE directions: a
+ * reveal turns the card back over to show the face, a loss turns the face
+ * over to show the back, which is then what the mesh-dissolve dissolves.
+ */
+bool coup_reveal_is_loss(const coup_reveal_t* rv, int slot);
+
+/** How many slots are currently animating. */
+int  coup_reveal_active_count(const coup_reveal_t* rv);
+
+/**
+ * Ring slot holding display row `row` of a log window, or -1 if that row is
+ * empty.
+ *
+ * st->log is a head/count ring (coup_game.c:394-417): while log_count is
+ * below COUP_LOG_LINES the head stays at 0 and entry n sits in slot n, but
+ * once it is full each append overwrites slot `head` and advances it, so the
+ * OLDEST entry is at `head` and chronological entry n is at
+ * (head + n) % COUP_LOG_LINES.
+ *
+ * Three screens draw a window onto that ring - the game log, the connecting
+ * screen's progress list and the game-over recap - and each had its own copy
+ * of the window arithmetic. One of them got it wrong. This is the single
+ * copy they now share.
+ *
+ * Row 0 is the OLDEST row of the visible window and row (shown-1) the
+ * newest, so drawing rows top to bottom prints the match in the order it
+ * happened. `scroll` counts entries back from the newest and is clamped
+ * internally, so a stale value can never index outside the buffer.
+ *
+ * Pure arithmetic - unit tested in tests/coup/test_gameover_recap.c.
+ */
+int  coup_log_ring_index(int head, int count, int max_rows,
+                         int scroll, int row);
+
 /* Effect trigger - pure logic, unit tested on the host. */
 int  coup_fx_for_action(int action);
 int  coup_fx_on_transition(const coup_fx_prev_t* prev, const coup_state_t* st);

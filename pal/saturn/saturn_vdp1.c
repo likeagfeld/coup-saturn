@@ -27,6 +27,14 @@ static saturn_vdp1_state_t g_vdp1_state = {
 static saturn_vdp1_cmd_t g_cmd_buffer[SATURN_VDP1_MAX_CMDS + 1];
 static int g_cmd_buffer_count = 0;
 
+/* One bit per queue slot: set means the slot's VRAM contents were written by
+ * an external owner (see saturn_vdp1_reserve_cmd_slot) and the flush must not
+ * publish the empty RAM entry over them. A bitmap rather than a list because
+ * the flush has to answer "is this slot external?" once per slot per frame,
+ * and a linear scan of a list would make that O(slots * reservations).
+ * 257 bytes of BSS, cleared once per frame. */
+static uint8_t g_cmd_external[(SATURN_VDP1_MAX_CMDS + 8) / 8];
+
 /*============================================================================
  * Testable Functions (Software Logic)
  *============================================================================*/
@@ -334,6 +342,87 @@ void saturn_vdp1_begin_frame(void)
 {
     saturn_vdp1_begin_frame_internal(&g_vdp1_state);
     g_cmd_buffer_count = 0;
+    memset(g_cmd_external, 0, sizeof(g_cmd_external));
+}
+
+/*============================================================================
+ * Externally-written command slots
+ *============================================================================*/
+
+uint32_t saturn_vdp1_cmd_slot_addr(int index)
+{
+    if (index < 0 || index > SATURN_VDP1_MAX_CMDS) {
+        return 0;
+    }
+    return (uint32_t)SATURN_VDP1_CMD_OFFSET
+           + (uint32_t)index * SATURN_VDP1_CMD_SIZE;
+}
+
+bool saturn_vdp1_slot_is_external(int index)
+{
+    if (index < 0 || index > SATURN_VDP1_MAX_CMDS) {
+        return false;
+    }
+    return (g_cmd_external[index >> 3] & (uint8_t)(1u << (index & 7))) != 0;
+}
+
+#ifdef __SATURN__
+/**
+ * Spin until VDP1 reports the current frame's drawing complete.
+ *
+ * CEF (EDSR bit 1) = 1 means the command list has been walked to its END, so
+ * VRAM command slots are safe to rewrite until VDP1 auto-starts again at the
+ * beginning of active display (PTMR=0x02). Shared by the flush and by slot
+ * reservation so both write under the same guarantee.
+ */
+static void saturn_vdp1_wait_draw_end(void)
+{
+    while (!(*(volatile uint16_t*)(uintptr_t)SATURN_VDP1_EDSR
+             & SATURN_VDP1_EDSR_CEF)) {
+        /* VDP1 still drawing - wait */
+    }
+}
+#endif
+
+uint32_t saturn_vdp1_reserve_cmd_slot(void)
+{
+    int index;
+
+    if (!saturn_vdp1_check_budget(&g_vdp1_state)) {
+        return 0;
+    }
+
+    index = g_vdp1_state.cmd_count++;
+    g_cmd_external[index >> 3] |= (uint8_t)(1u << (index & 7));
+
+    /* Keep the RAM queue's high-water mark in step. The entry itself is never
+     * published (the flush skips external slots) but the mark is what puts
+     * saturn_vdp1_end_frame()'s END command AFTER this slot rather than on
+     * top of it. */
+    memset(&g_cmd_buffer[index], 0, sizeof(g_cmd_buffer[index]));
+    if (index >= g_cmd_buffer_count) {
+        g_cmd_buffer_count = index + 1;
+    }
+
+#ifdef __SATURN__
+    {
+        volatile saturn_vdp1_cmd_t* slot;
+
+        saturn_vdp1_wait_draw_end();
+
+        /* Pre-fill with a no-op so an unwritten reservation cannot leave last
+         * frame's command on a live chain. LOCAL_COORD(0,0) only re-states the
+         * origin saturn_vdp1_activate() already set at slot 2. */
+        slot = (volatile saturn_vdp1_cmd_t*)(uintptr_t)(
+            SATURN_VDP1_VRAM + saturn_vdp1_cmd_slot_addr(index));
+        slot->ctrl = VDP1_CMD_LOCAL_COORD;
+        slot->link = 0;
+        slot->xa = 0;
+        slot->ya = 0;
+    }
+#endif
+
+    return saturn_vdp1_cmd_slot_addr(index);
 }
 
 void saturn_vdp1_flush_cmds(void)
@@ -358,17 +447,24 @@ void saturn_vdp1_flush_cmds(void)
     /* Wait for VDP1 to finish drawing current frame.
      * Spin-read EDSR until CEF=1.  Typically VDP1 finishes well
      * before our game logic completes, so this rarely spins. */
-    while (!(*(volatile uint16_t*)(uintptr_t)SATURN_VDP1_EDSR
-             & SATURN_VDP1_EDSR_CEF)) {
-        /* VDP1 still drawing — wait */
-    }
+    saturn_vdp1_wait_draw_end();
 
     /* Write all buffered commands to VDP1 VRAM at slot 4+ (offset 0x80). */
     for (i = 0; i < g_cmd_buffer_count; i++) {
-        volatile uint16_t* dst = (volatile uint16_t*)(uintptr_t)(
+        volatile uint16_t* dst;
+        const uint16_t* src;
+
+        /* A reserved slot already holds its owner's command, written direct
+         * to VRAM. Publishing the (empty) RAM entry here would erase it -
+         * which is the whole reason the reservation is tracked. */
+        if (saturn_vdp1_slot_is_external(i)) {
+            continue;
+        }
+
+        dst = (volatile uint16_t*)(uintptr_t)(
             SATURN_VDP1_VRAM + SATURN_VDP1_CMD_OFFSET
             + (uint32_t)i * SATURN_VDP1_CMD_SIZE);
-        const uint16_t* src = (const uint16_t*)&g_cmd_buffer[i];
+        src = (const uint16_t*)&g_cmd_buffer[i];
         for (w = 0; w < SATURN_VDP1_CMD_SIZE / 2; w++) {
             dst[w] = src[w];
         }

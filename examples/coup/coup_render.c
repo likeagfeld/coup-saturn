@@ -37,6 +37,7 @@
 #include "saturn_bg.h"
 #include "saturn_fade.h"
 #include "saturn_vdp1.h"
+#include "saturn_distort.h"      /* card flip + mesh dissolve */
 #include "saturn_vdp2.h"
 #include "coup_bg_index.h"  /* COUP_BG_SCENE_* */
 #endif
@@ -322,6 +323,261 @@ static const char* card_short(int character)
     return "??";
 }
 
+/*============================================================================
+ * Card-reveal state machine
+ *
+ * See coup.h for the contract and the design-doc citations. Pure: it reads
+ * coup_state_t and writes only its own struct, so every frame of every
+ * animation is asserted on the host (tests/coup/test_coup_reveal.c) instead
+ * of being confirmed by watching a screen.
+ *============================================================================*/
+
+int coup_reveal_slot_index(int player_index, int card_index)
+{
+    if (player_index < 0 || player_index >= COUP_MAX_PLAYERS) {
+        return -1;
+    }
+    if (card_index < 0 || card_index >= COUP_CARDS_PER_PLAYER) {
+        return -1;
+    }
+    return player_index * COUP_CARDS_PER_PLAYER + card_index;
+}
+
+void coup_reveal_init(coup_reveal_t* rv)
+{
+    int i;
+
+    if (!rv) {
+        return;
+    }
+    for (i = 0; i < COUP_REVEAL_SLOTS; i++) {
+        rv->slots[i].active = 0;
+        rv->slots[i].step = 0;
+        rv->slots[i].card = COUP_CHAR_NONE;
+        rv->slots[i].is_loss = 0;
+        rv->prev[i] = COUP_CHAR_NONE;
+    }
+    rv->seeded = 0;
+}
+
+/**
+ * Last step value a slot's sequence reaches.
+ *
+ * The flip occupies steps 0..COUP_REVEAL_FLIP_FRAMES INCLUSIVE, because both
+ * endpoints are drawn: step 0 is the full-width front face and step
+ * COUP_REVEAL_FLIP_FRAMES the full-width back face, with the collapsed sliver
+ * at the midpoint between them (saturn_distort_flip_quad's envelope). A loss
+ * then hands over to the dissolve, which starts its own count at the next
+ * step - hence the +1.
+ */
+static int reveal_last_step(const coup_reveal_slot_t* s)
+{
+    return s->is_loss
+           ? (COUP_REVEAL_FLIP_FRAMES + 1 + COUP_REVEAL_DISSOLVE_FRAMES)
+           : COUP_REVEAL_FLIP_FRAMES;
+}
+
+/**
+ * The card this client can currently see in a given slot.
+ *
+ * For our own seat that is st->my_cards: players[self].cards carries
+ * FACEDOWN on the wire like everyone else's, so reading the seat array for
+ * our own seat would mean our own cards never animated at all.
+ */
+static uint8_t reveal_visible_card(const coup_state_t* st, int p, int c)
+{
+    if (st->players[p].is_self) {
+        return st->my_cards[c];
+    }
+    return st->players[p].cards[c];
+}
+
+void coup_reveal_observe(coup_reveal_t* rv, const coup_state_t* st)
+{
+    int p, c;
+
+    if (!rv || !st) {
+        return;
+    }
+
+    /* Off the game screen there are no cards on the table, and the lobby
+     * zero-fills players[].cards - and zero is COUP_CHAR_DUKE, not "no
+     * card". Re-seeding here is what keeps the next deal silent; testing a
+     * card VALUE for "unset" could not. */
+    if (st->screen != COUP_SCREEN_GAME) {
+        coup_reveal_init(rv);
+        return;
+    }
+
+    for (p = 0; p < COUP_MAX_PLAYERS; p++) {
+        for (c = 0; c < COUP_CARDS_PER_PLAYER; c++) {
+            int slot = coup_reveal_slot_index(p, c);
+            uint8_t prev, cur;
+
+            /* players[] is a fixed 7 entries; past player_count they hold
+             * the previous match's cards. */
+            if (p >= st->player_count) {
+                continue;
+            }
+
+            prev = rv->prev[slot];
+            cur = reveal_visible_card(st, p, c);
+            rv->prev[slot] = cur;
+
+            if (!rv->seeded) {
+                continue;   /* first look: record only, animate nothing */
+            }
+            if (cur == prev) {
+                continue;
+            }
+
+            if (cur == COUP_CHAR_NONE) {
+                /* Influence lost. The face that goes with it is whatever we
+                 * last knew; a card that was never shown dissolves without a
+                 * face, which the renderer draws as the card back. */
+                rv->slots[slot].active = 1;
+                rv->slots[slot].step = 0;
+                rv->slots[slot].is_loss = 1;
+                rv->slots[slot].card =
+                    (prev < COUP_NUM_CHARACTERS) ? prev : COUP_CHAR_NONE;
+            } else if (cur < COUP_NUM_CHARACTERS &&
+                       (prev == COUP_CHAR_FACEDOWN ||
+                        prev < COUP_NUM_CHARACTERS)) {
+                /* Turned face up, or exchanged for a different character.
+                 * NONE -> a card is a DEAL, not a reveal, and is silent. */
+                rv->slots[slot].active = 1;
+                rv->slots[slot].step = 0;
+                rv->slots[slot].is_loss = 0;
+                rv->slots[slot].card = cur;
+            }
+        }
+    }
+
+    rv->seeded = 1;
+}
+
+void coup_reveal_tick(coup_reveal_t* rv)
+{
+    int i;
+
+    if (!rv) {
+        return;
+    }
+    for (i = 0; i < COUP_REVEAL_SLOTS; i++) {
+        coup_reveal_slot_t* s = &rv->slots[i];
+
+        if (!s->active) {
+            continue;
+        }
+        if ((int)s->step >= reveal_last_step(s)) {
+            s->active = 0;
+            s->step = 0;
+            continue;
+        }
+        s->step++;
+    }
+}
+
+int coup_reveal_stage(const coup_reveal_t* rv, int slot,
+                      int* out_step, int* out_frames, int* out_card)
+{
+    const coup_reveal_slot_t* s;
+    int step, frames, stage;
+
+    if (!rv || slot < 0 || slot >= COUP_REVEAL_SLOTS) {
+        return COUP_REVEAL_IDLE;
+    }
+    s = &rv->slots[slot];
+    if (!s->active) {
+        return COUP_REVEAL_IDLE;
+    }
+
+    if ((int)s->step <= COUP_REVEAL_FLIP_FRAMES) {
+        stage = COUP_REVEAL_FLIP;
+        step = s->step;
+        frames = COUP_REVEAL_FLIP_FRAMES;
+    } else {
+        stage = COUP_REVEAL_DISSOLVE;
+        step = (int)s->step - COUP_REVEAL_FLIP_FRAMES - 1;
+        frames = COUP_REVEAL_DISSOLVE_FRAMES;
+    }
+
+    if (out_step)   *out_step = step;
+    if (out_frames) *out_frames = frames;
+    if (out_card)   *out_card = (int)s->card;
+    return stage;
+}
+
+bool coup_reveal_is_loss(const coup_reveal_t* rv, int slot)
+{
+    if (!rv || slot < 0 || slot >= COUP_REVEAL_SLOTS) {
+        return false;
+    }
+    return rv->slots[slot].active != 0 && rv->slots[slot].is_loss != 0;
+}
+
+int coup_reveal_active_count(const coup_reveal_t* rv)
+{
+    int i, n = 0;
+
+    if (!rv) {
+        return 0;
+    }
+    for (i = 0; i < COUP_REVEAL_SLOTS; i++) {
+        if (rv->slots[i].active) {
+            n++;
+        }
+    }
+    return n;
+}
+
+/*============================================================================
+ * Log window arithmetic
+ *
+ * See coup.h for what this is and why all three log views share it.
+ *============================================================================*/
+
+int coup_log_ring_index(int head, int count, int max_rows, int scroll, int row)
+{
+    int shown;
+    int chrono;
+
+    if (count <= 0 || max_rows <= 0) {
+        return -1;
+    }
+    if (count > COUP_LOG_LINES) {
+        count = COUP_LOG_LINES;
+    }
+
+    shown = (count < max_rows) ? count : max_rows;
+    if (row < 0 || row >= shown) {
+        return -1;
+    }
+
+    if (scroll < 0) {
+        scroll = 0;
+    }
+    if (scroll > count - shown) {
+        scroll = count - shown;
+    }
+
+    chrono = count - shown - scroll + row;
+    if (chrono < 0 || chrono >= count) {
+        return -1;
+    }
+
+    /* The step that was missing from the game-over recap. `chrono` is an
+     * entry NUMBER; the slot it lives in is that many places on from the
+     * oldest entry, which is the one at `head`. The two only coincide while
+     * the ring has never wrapped, and with COUP_LOG_LINES == 6 a finished
+     * match has always wrapped - so every recap row was reading somebody
+     * else's line. */
+    if (head < 0) {
+        head = 0;
+    }
+    return (head + chrono) % COUP_LOG_LINES;
+}
+
 static int safe_copy(char* dst, const char* src, int max_len)
 {
     int i = 0;
@@ -533,6 +789,170 @@ static void fx_render(void)
     coup_fx_draw_scaled(s_fx_active, frame, s_fx_x, s_fx_y,
                         COUP_FX_SCALE_NUM, COUP_FX_SCALE_DEN);
     s_fx_tick++;
+}
+
+/*----------------------------------------------------------------------------
+ * Card reveal / influence loss - the distorted-sprite animations
+ *
+ * The state machine above decides WHAT is animating and at which step; this
+ * turns that into VDP1 Distorted Sprite commands via pal/saturn/
+ * saturn_distort.c.
+ *
+ * Geometry note: saturn_distort_encode_flip() passes the quad's w/h straight
+ * into CMDSIZE as the SOURCE character size, so the drawn card is always the
+ * art's authored size. Every card asset here - the back and all five faces -
+ * is 48x72 (coup_fx_data.h:6762-6768), so that is the one size these
+ * animations use. Scaling a flip would need a second source-size parameter
+ * the module does not take.
+ *
+ * Palette note: CMDCOLR carries ONE colour bank for the whole command, but
+ * the flip swaps TEXTURE at the midpoint and the card back's palette is not
+ * the faces' palette. The bank therefore has to be swapped in step with the
+ * texture, which the caller does here using the same midpoint test
+ * saturn_distort_encode_flip() applies internally (step < frames/2).
+ *--------------------------------------------------------------------------*/
+
+/* Where an opponent's card animates. Their seat boxes are text-sized, so a
+ * 48x72 card cannot play in place; it plays on the table instead, the same
+ * spot the action effects use. */
+#define COUP_REVEAL_STAGE_X (COUP_SCREEN_W / 2)
+#define COUP_REVEAL_STAGE_Y (84 + 32)
+#define COUP_REVEAL_STAGE_PITCH 56
+
+static coup_reveal_t s_reveal;
+
+/** Is this card mid-animation? Used to suppress the static face under it. */
+static bool reveal_busy(int player_index, int card_index)
+{
+    return coup_reveal_stage(&s_reveal,
+                             coup_reveal_slot_index(player_index, card_index),
+                             NULL, NULL, NULL) != COUP_REVEAL_IDLE;
+}
+
+/** Seat index of the local player, or -1. */
+static int reveal_self_index(const coup_state_t* st)
+{
+    int i;
+    for (i = 0; i < st->player_count; i++) {
+        if (st->players[i].is_self) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/** Draw one card's current animation frame. Returns false if it drew nothing. */
+static bool reveal_draw_slot(int stage, int step, int frames, int card,
+                             bool is_loss, int cx, int cy)
+{
+    uint32_t back_tex, face_tex;
+    int back_bank, face_bank;
+    uint32_t slot_addr;
+    int face_ui;
+
+    if (!coup_ui_texture(COUP_UI_CARD_BACK, &back_tex, &back_bank)) {
+        return false;
+    }
+
+    /* A card that was never shown has no face; it flips back-to-back, which
+     * still reads as "something was turned over" before it dissolves. */
+    face_ui = char_to_card_ui(card);
+    if (face_ui < 0 || !coup_ui_texture(face_ui, &face_tex, &face_bank)) {
+        face_tex = back_tex;
+        face_bank = back_bank;
+    }
+
+    slot_addr = saturn_vdp1_reserve_cmd_slot();
+    if (slot_addr == 0) {
+        return false;   /* command budget gone - skip this frame's effect */
+    }
+
+    if (stage == COUP_REVEAL_DISSOLVE) {
+        /* "flip to back + mesh-dissolve out": the back is what is on screen
+         * when the flip ends, so it is the back that dissolves. */
+        return saturn_distort_draw_mesh_dissolve(slot_addr, cx, cy,
+                                                 COUP_CARD_ART_W, COUP_CARD_ART_H,
+                                                 back_tex, back_bank);
+    }
+
+    /* A reveal turns card back -> face. A loss turns face -> card back,
+     * because the dissolve that follows it dissolves the back. */
+    {
+        uint32_t first_tex = is_loss ? face_tex : back_tex;
+        uint32_t second_tex = is_loss ? back_tex : face_tex;
+        int first_bank = is_loss ? face_bank : back_bank;
+        int second_bank = is_loss ? back_bank : face_bank;
+
+        return saturn_distort_draw_flip(slot_addr, cx, cy,
+                                        COUP_CARD_ART_W, COUP_CARD_ART_H,
+                                        step, frames,
+                                        first_tex, second_tex,
+                                        (step < frames / 2)
+                                            ? first_bank : second_bank,
+                                        false);
+    }
+}
+
+/** Draw every running card animation. */
+static void reveal_render(const coup_state_t* st)
+{
+    const coup_game_hand_layout_t* H = &COUP_UI.game.hand;
+    int self_idx = reveal_self_index(st);
+    int stage_n = 0;
+    int stage_i = 0;
+    int p, c;
+
+    /* Count the table-side animations first so they can be laid out about the
+     * centre instead of stacking on one another. */
+    for (p = 0; p < st->player_count; p++) {
+        for (c = 0; c < COUP_CARDS_PER_PLAYER; c++) {
+            if (p != self_idx && reveal_busy(p, c)) {
+                stage_n++;
+            }
+        }
+    }
+
+    for (p = 0; p < st->player_count; p++) {
+        for (c = 0; c < COUP_CARDS_PER_PLAYER; c++) {
+            int step = 0, frames = COUP_REVEAL_FLIP_FRAMES;
+            int card = COUP_CHAR_NONE;
+            int stage = coup_reveal_stage(&s_reveal,
+                                          coup_reveal_slot_index(p, c),
+                                          &step, &frames, &card);
+            int cx, cy;
+
+            if (stage == COUP_REVEAL_IDLE) {
+                continue;
+            }
+
+            if (p == self_idx) {
+                /* Our own cards animate in place, over their hand slot. */
+                int x = (c == 0) ? H->card0_x : H->card1_x;
+                int y = (c == 0) ? H->card0_y : H->card1_y;
+                cx = x + COUP_CARD_ART_W / 2;
+                cy = y + COUP_CARD_ART_H / 2;
+            } else {
+                cx = COUP_REVEAL_STAGE_X
+                     + (stage_i - (stage_n - 1) / 2) * COUP_REVEAL_STAGE_PITCH;
+                cy = COUP_REVEAL_STAGE_Y;
+                stage_i++;
+
+                /* Keep the quad on screen. A negative VDP1 x wraps rather
+                 * than clipping (see coup_centre_x in coup.h), so a wide
+                 * row of simultaneous losses must be clamped, not trusted. */
+                if (cx < COUP_CARD_ART_W / 2) {
+                    cx = COUP_CARD_ART_W / 2;
+                } else if (cx > COUP_SCREEN_W - COUP_CARD_ART_W / 2) {
+                    cx = COUP_SCREEN_W - COUP_CARD_ART_W / 2;
+                }
+            }
+
+            reveal_draw_slot(stage, step, frames, card,
+                             coup_reveal_is_loss(&s_reveal,
+                                 coup_reveal_slot_index(p, c)),
+                             cx, cy);
+        }
+    }
 }
 #endif
 
@@ -1004,12 +1424,11 @@ static void coup_render_connecting(const coup_state_t* st)
         int li;
         int visible = (st->log_count < L->log_max_visible) ? st->log_count : L->log_max_visible;
         for (li = 0; li < visible; li++) {
-            int idx;
-            if (st->log_count <= L->log_max_visible) {
-                idx = (st->log_head + li) % COUP_LOG_LINES;
-            } else {
-                int start = (st->log_head + st->log_count - L->log_max_visible) % COUP_LOG_LINES;
-                idx = (start + li) % COUP_LOG_LINES;
+            /* This screen does not scroll, so the window is always the tail. */
+            int idx = coup_log_ring_index(st->log_head, st->log_count,
+                                          L->log_max_visible, 0, li);
+            if (idx < 0) {
+                continue;
             }
             CUI_DISPLAY()->draw_text_sprite(L->log_list.x,
                                      L->log_list.base_y + li * L->log_list.spacing,
@@ -2013,7 +2432,12 @@ static void render_your_hand(const coup_state_t* st)
         int card0 = -1;
 #ifdef __SATURN__
         card0 = char_to_card_ui(c0);
-        if (coup_fx_loaded() && card0 >= 0) {
+        /* A card that is mid-flip is drawn by reveal_render(); drawing the
+         * static face too would leave it standing behind the collapsing
+         * quad. The label is suppressed with it, hence card0 >= 0 below. */
+        if (reveal_busy(reveal_self_index(st), 0)) {
+            /* animating - reveal_render() owns this slot this frame */
+        } else if (coup_fx_loaded() && card0 >= 0) {
             /* Official card face at its authored 48x72 - no scaling, so no
              * downscale blockiness. */
             coup_ui_draw(card0, H->card0_x, H->card0_y);
@@ -2053,7 +2477,10 @@ static void render_your_hand(const coup_state_t* st)
         int card1 = -1;
 #ifdef __SATURN__
         card1 = char_to_card_ui(c1);
-        if (coup_fx_loaded() && card1 >= 0) {
+        /* Same suppression as card 0 above. */
+        if (reveal_busy(reveal_self_index(st), 1)) {
+            /* animating - reveal_render() owns this slot this frame */
+        } else if (coup_fx_loaded() && card1 >= 0) {
             /* Official card face at its authored 48x72 - no scaling, so no
              * downscale blockiness. */
             coup_ui_draw(card1, H->card1_x, H->card1_y);
@@ -2128,16 +2555,14 @@ static void render_game_log(const coup_state_t* st)
 
     /* Show log lines with scroll offset applied */
     for (i = 0; i < visible_lines; i++) {
-        int ring_idx;
+        int ring_idx = coup_log_ring_index(st->log_head, st->log_count,
+                                           GL->max_visible, scroll, i);
         int py = GL->base_y + i * GL->spacing;
         int age;
         uint32_t log_color;
 
-        if (st->log_count <= GL->max_visible) {
-            ring_idx = (st->log_head + i) % COUP_LOG_LINES;
-        } else {
-            int start = (st->log_head + st->log_count - GL->max_visible - scroll) % COUP_LOG_LINES;
-            ring_idx = (start + i) % COUP_LOG_LINES;
+        if (ring_idx < 0) {
+            continue;
         }
 
         age = visible_lines - 1 - i;
@@ -2211,6 +2636,15 @@ static void coup_render_game(const coup_state_t* st)
 
     /* === 4. Your hand (center-bottom, outlined panel) === */
     render_your_hand(st);
+
+    /* === 4b. Card reveals and influence losses ===
+     *
+     * After the hand so a flipping card is drawn over its own slot rather
+     * than under it: VDP1 has no depth test, so command ORDER is the only
+     * z-order there is. */
+#ifdef __SATURN__
+    reveal_render(st);
+#endif
 
     /* === 5. Corner shortcuts === */
     render_corners();
@@ -2340,11 +2774,23 @@ static void coup_render_game_over(const coup_state_t* st)
         hline(panel_x, panel_y - 4, panel_w, COUP_ACCENT_GOLD);
 
         for (i = 0; i < shown; i++) {
-            int idx = total - shown - scroll + i;
+            /* USER-REPORTED BUG, fixed here: this used to be
+             *     int idx = total - shown - scroll + i;
+             * which uses a chronological entry NUMBER as a ring SLOT number.
+             * The two agree only while the ring has never wrapped, and with
+             * COUP_LOG_LINES == 6 a finished match has always wrapped, so
+             * the recap printed its rows out of order - and marked a
+             * mid-match line as "the winning action". The mapping is now the
+             * one every log view shares (tests/coup/test_gameover_recap.c). */
+            int idx = coup_log_ring_index(st->log_head, total, max_rows,
+                                           scroll, i);
             int y = panel_y + 6 + i * row_h;
-            int last = (idx == total - 1);
+            /* Newest entry = last row of an unscrolled window. Derived from
+             * the ROW, not from the slot: a slot number says nothing about
+             * how recent its entry is once the ring has wrapped. */
+            int last = (scroll == 0 && i == shown - 1);
 
-            if (idx < 0 || idx >= COUP_LOG_LINES) {
+            if (idx < 0) {
                 continue;
             }
             if (last) {
@@ -2409,6 +2855,11 @@ void coup_render_screen(const coup_state_t* st)
         coup_render_update_shading(st->frame_count);
         /* Safe no-op when not armed, so it needs no guard. */
         saturn_linescroll_advance();
+
+        /* Watch for cards turning over. Run on EVERY screen, not just the
+         * game screen: coup_reveal_observe() re-seeds itself off the game
+         * screen, and that is what keeps the next match's deal silent. */
+        coup_reveal_observe(&s_reveal, st);
 
         /* Advance and draw any coins in flight. The draw issues its own
          * scaled-sprite commands so it can hold the coin's CENTRE fixed
@@ -2529,6 +2980,12 @@ void coup_render_screen(const coup_state_t* st)
         draw_at(10, 14, "Unknown screen", COUP_TEXT_RED);
         break;
     }
+
+#ifdef __SATURN__
+    /* Advance the card animations AFTER they have been drawn, so the frame
+     * the observer started at step 0 is actually shown. */
+    coup_reveal_tick(&s_reveal);
+#endif
 
     CUI_DISPLAY()->end_frame();
 }

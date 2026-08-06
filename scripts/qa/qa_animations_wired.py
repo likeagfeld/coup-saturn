@@ -43,17 +43,20 @@ REQUIRED = {
     "saturn_coinfx_tick":         "coins in flight never move",
     "saturn_coinfx_draw":         "coins in flight are never drawn",
     "saturn_coinfx_timer_colors": "the timer bar never ramps green->amber->red",
+    "saturn_distort_draw_flip":
+        "a card reveal never flips - it just changes, instantly",
+    "saturn_distort_draw_mesh_dissolve":
+        "a lost influence never dissolves off the table",
+    "coup_reveal_observe":     "no reveal is ever detected, so no card animates",
+    "coup_reveal_tick":        "a reveal starts and then freezes on frame 0",
+    "saturn_vdp1_reserve_cmd_slot":
+        "the distort commands have nowhere on the VDP1 chain to land",
 }
 
 # Built and tested but not yet driven by a game event. Listed explicitly so
 # the gap is VISIBLE rather than silently absent - the whole point of this
 # gate. Move an entry up into REQUIRED when its trigger is written.
-KNOWN_UNWIRED = {
-    "saturn_distort_draw_flip":
-        "card reveal/loss flip - needs a reveal-event state machine",
-    "saturn_distort_draw_mesh_dissolve":
-        "influence-loss dissolve - same state machine",
-}
+KNOWN_UNWIRED = {}
 
 # A gouraud table can be generated and uploaded every frame and still never
 # reach the screen, because nothing passes its SLOT to a draw. That is a

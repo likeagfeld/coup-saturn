@@ -291,6 +291,61 @@ void saturn_vdp1_flush_cmds(void);
  */
 void saturn_vdp1_activate(void);
 
+/*============================================================================
+ * Externally-written command slots
+ *
+ * Some effects build their own VDP1 command and publish it straight to VRAM
+ * rather than going through the encoders in this file - pal/saturn/
+ * saturn_distort.c does, because a Distorted Sprite needs four independent
+ * vertex pairs that none of the draw_* helpers here expose. Those writers
+ * need a slot that
+ *
+ *   (a) VDP1 will actually WALK this frame, and
+ *   (b) saturn_vdp1_flush_cmds() will not immediately overwrite from the RAM
+ *       queue.
+ *
+ * A reservation gives them both. It consumes a position in the ordinary
+ * per-frame queue - so the command sits INSIDE the existing sequential chain,
+ * in call order, with no second END/JP linkage to maintain and no separate
+ * VRAM region to keep clear - and flags that position as externally owned so
+ * the flush leaves it alone.
+ *
+ * The slot is pre-filled with LOCAL_COORD(0,0), a legal no-op (it re-states
+ * the local origin the chain already set), so a reservation whose owner then
+ * declines to draw leaves a harmless command rather than last frame's stale
+ * one.
+ *
+ * Reservation also waits on EDSR CEF before returning, exactly as
+ * saturn_vdp1_flush_cmds() does, so the caller's write cannot land in a
+ * command table VDP1 is still walking.
+ *============================================================================*/
+
+/**
+ * VDP1 VRAM byte offset of command-table slot `index`. Pure; host-testable.
+ *
+ * Command tables sit on 20H boundaries (ST-013-R3 section 6.2 - the lower two
+ * bits of CMDLINK are fixed at 00H, VDP1_Manual.txt:3295-3297), which this
+ * grid satisfies by construction.
+ *
+ * @return byte offset, or 0 if `index` is outside the command table
+ */
+uint32_t saturn_vdp1_cmd_slot_addr(int index);
+
+/**
+ * Reserve one command slot for a writer that publishes its own 32-byte
+ * command to VDP1 VRAM.
+ *
+ * @return VDP1 VRAM byte offset to write the command to, or 0 if the
+ *         per-frame command budget is exhausted (caller skips the effect)
+ */
+uint32_t saturn_vdp1_reserve_cmd_slot(void);
+
+/**
+ * True if slot `index` was reserved this frame, i.e. its VRAM contents belong
+ * to an external writer and the flush must not publish over them.
+ */
+bool saturn_vdp1_slot_is_external(int index);
+
 /**
  * Upload sprite texture data to VDP1 VRAM.
  *
