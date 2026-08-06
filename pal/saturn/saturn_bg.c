@@ -56,6 +56,23 @@ int saturn_bg_current_scene(void)
  * Returns false if the scene could not be read; the caller leaves whatever
  * was already on screen rather than painting garbage.
  */
+/**
+ * Fill the entire NBG1 plane with the transparent index.
+ *
+ * Every byte of 512x256 - the visible window AND both margins - so no part
+ * of a previous scene can survive anywhere the display reaches.
+ */
+static void saturn_bg_clear(void)
+{
+    volatile uint8_t* vram = (volatile uint8_t*)SATURN_BG_VRAM;
+    uint32_t i;
+
+    for (i = 0; i < (uint32_t)COUP_BG_W * COUP_BG_H; i++) {
+        vram[i] = 0;
+    }
+}
+
+
 static bool saturn_bg_upload(int scene)
 {
     volatile uint8_t* vram = (volatile uint8_t*)SATURN_BG_VRAM;
@@ -146,7 +163,25 @@ void saturn_bg_set_scene(int scene)
         return;             /* already resident - skip the disc read entirely */
     }
     if (!saturn_bg_upload(scene)) {
-        return;             /* keep the previous scene rather than show garbage */
+        /* BLANK the plane rather than keep the previous scene.
+         *
+         * "Keep the previous scene" was written to avoid showing garbage, and
+         * it trades one artifact for a worse one: if the streamed read fails
+         * on the way from the table to VICTORY, the GAME backdrop stays up
+         * and the victory screen's panels are drawn on top of it - the old
+         * screen visibly nested behind the new one. Reported exactly that
+         * way, and it is intermittent because it needs a failed read.
+         *
+         * A blank backdrop is unambiguous and correct-looking; the wrong
+         * screen showing through is neither. The panels and text of the new
+         * screen still draw over it, so nothing is lost but the art.
+         *
+         * saturn_bg_clear() writes the WHOLE 512x256 plane, both margins
+         * included, so nothing of the previous scene survives anywhere the
+         * display or overscan can reach. */
+        saturn_bg_clear();
+        s_scene = scene;    /* do not retry-loop on a dead read every frame */
+        return;
     }
 #else
     if (scene < 0) {
