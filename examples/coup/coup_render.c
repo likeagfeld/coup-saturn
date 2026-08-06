@@ -795,17 +795,6 @@ static int char_to_card_ui(int character)
     }
 }
 
-static int char_to_sprite(int character)
-{
-    switch (character) {
-    case COUP_CHAR_DUKE:       return COUP_SPR_DUKE;
-    case COUP_CHAR_ASSASSIN:   return COUP_SPR_ASSASSIN;
-    case COUP_CHAR_CAPTAIN:    return COUP_SPR_CAPTAIN;
-    case COUP_CHAR_AMBASSADOR: return COUP_SPR_AMBASSADOR;
-    case COUP_CHAR_CONTESSA:   return COUP_SPR_CONTESSA;
-    default:                   return -1;
-    }
-}
 #endif
 
 #ifdef __SATURN__
@@ -1062,11 +1051,158 @@ static void reveal_render(const coup_state_t* st)
 #endif
 
 /*============================================================================
+ * Title-screen card carousel - pure maths
+ *
+ * See coup.h for the full design rationale (why this replaces the portrait
+ * parade, the depth model, the periodicity/ordering guarantees).
+ *============================================================================*/
+
+void coup_carousel_layout(int frame, int center_x, int center_y, int radius_x,
+                          coup_carousel_card_t out[COUP_CAROUSEL_COUNT])
+{
+    int spacing = COUP_SHADING_PERIOD / COUP_CAROUSEL_COUNT;   /* 20 */
+    int i;
+
+    if (!out) {
+        return;
+    }
+
+    for (i = 0; i < COUP_CAROUSEL_COUNT; i++) {
+        int raw = frame + i * spacing;
+        int phase = raw % COUP_SHADING_PERIOD;
+        int lateral, depth;
+        int h, w, abs_depth;
+
+        if (phase < 0) {
+            phase += COUP_SHADING_PERIOD;
+        }
+
+        /* x and depth are the same sine table, a quarter-period apart - the
+         * standard parametric-circle trick (x = R*sin(t), z = R*cos(t)),
+         * reusing coup_shading_sin() rather than adding a second table
+         * (2026-08-06 facelift task: "reuse it rather than adding a second
+         * one"). */
+        lateral = coup_shading_sin(phase);
+        depth   = coup_shading_sin(phase + COUP_SHADING_PERIOD / 4);
+
+        /* Height: near (depth=+1024) is biggest, far (depth=-1024) is
+         * smallest. Always in [H_MIN, H_MAX], both > 0 by definition -
+         * satisfies the zero/negative display-size precaution for every
+         * input, not just the common case. */
+        h = COUP_CAROUSEL_H_MIN
+          + ((COUP_CAROUSEL_H_MAX - COUP_CAROUSEL_H_MIN) * (depth + 1024))
+            / 2048;
+
+        /* Width: same height-derived value, foreshortened by how close to
+         * "edge-on" the card is (|depth|/1024 - see coup.h's depth-model
+         * note). Floored at W_FLOOR rather than let it reach 0 at depth=0. */
+        abs_depth = depth < 0 ? -depth : depth;
+        w = (h * COUP_CARD_ART_W) / COUP_CARD_ART_H;
+        w = (w * abs_depth) / 1024;
+        if (w < COUP_CAROUSEL_W_FLOOR) {
+            w = COUP_CAROUSEL_W_FLOOR;
+        }
+
+        out[i].cx = center_x + (radius_x * lateral) / 1024;
+        out[i].cy = center_y;
+        out[i].w  = w;
+        out[i].h  = h;
+        out[i].depth = depth;
+        out[i].card_id = i;
+    }
+}
+
+void coup_carousel_sort(const coup_carousel_card_t cards[COUP_CAROUSEL_COUNT],
+                        int out_order[COUP_CAROUSEL_COUNT])
+{
+    int key[COUP_CAROUSEL_COUNT];
+    int i, j;
+
+    if (!cards || !out_order) {
+        return;
+    }
+
+    for (i = 0; i < COUP_CAROUSEL_COUNT; i++) {
+        out_order[i] = i;
+        /* Composite sort key: depth is the primary (back-to-front z-order),
+         * card_id the tiebreaker (see coup_carousel_sort()'s doc comment in
+         * coup.h for why depth alone ties). COUP_CAROUSEL_COUNT as the
+         * multiplier keeps every card_id (0..5) strictly inside the gap
+         * between adjacent depth buckets, so no two cards can ever produce
+         * the same composite key - the resulting order is a genuine strict
+         * total order, never a coin-flip between two equally-ranked draws. */
+        key[i] = cards[i].depth * COUP_CAROUSEL_COUNT + i;
+    }
+
+    /* Insertion sort - 6 elements, ascending key (back-most first). */
+    for (i = 1; i < COUP_CAROUSEL_COUNT; i++) {
+        int k = key[i];
+        int v = out_order[i];
+        j = i - 1;
+        while (j >= 0 && key[j] > k) {
+            key[j + 1] = key[j];
+            out_order[j + 1] = out_order[j];
+            j--;
+        }
+        key[j + 1] = k;
+        out_order[j + 1] = v;
+    }
+}
+
+#ifdef __SATURN__
+/** card_id (0..5, fixed per carousel slot) -> COUP_UI_* texture index.
+ * card_id 0..4 are the five character faces in COUP_CHAR_* order (which is
+ * also coup_fx_data.h's COUP_UI_DUKE.. COUP_UI_CONTESSA order - both are
+ * generated/declared in that same fixed sequence); card_id 5 is the back. */
+static int coup_carousel_card_ui(int card_id)
+{
+    if (card_id < 0 || card_id >= COUP_NUM_CHARACTERS) {
+        return COUP_UI_CARD_BACK;
+    }
+    return COUP_UI_DUKE + card_id;
+}
+
+void coup_carousel_draw(int frame, int cx, int cy, int radius_x)
+{
+    coup_carousel_card_t cards[COUP_CAROUSEL_COUNT];
+    int order[COUP_CAROUSEL_COUNT];
+    int i;
+
+    if (!coup_fx_loaded()) {
+        return;
+    }
+
+    coup_carousel_layout(frame, cx, cy, radius_x, cards);
+    coup_carousel_sort(cards, order);
+
+    /* Back-to-front: VDP1 has no depth test, command order IS z-order, so
+     * the front card's command must land LAST. */
+    for (i = 0; i < COUP_CAROUSEL_COUNT; i++) {
+        const coup_carousel_card_t* c = &cards[order[i]];
+        uint32_t tex_offset;
+        int bank;
+
+        if (!coup_ui_texture(coup_carousel_card_ui(c->card_id),
+                             &tex_offset, &bank)) {
+            continue;
+        }
+
+        /* SOURCE size first, then DESTINATION (saturn_vdp1.h:399-402) - the
+         * shipped bug from getting this backwards is documented at
+         * coup_fx_loader.c's coup_fx_draw_scaled(). */
+        saturn_vdp1_draw_sprite_scaled(c->cx - c->w / 2, c->cy - c->h / 2,
+                                       COUP_CARD_ART_W, COUP_CARD_ART_H,
+                                       c->w, c->h,
+                                       tex_offset, bank);
+    }
+}
+#endif
+
+/*============================================================================
  * 1. TITLE SCREEN — Full-width layout with horizontal menu
  *
- * VDP1 rects: ~16
- *   1 full bg, 4 title border, ~3 portrait sprites,
- *   ~3 name bars, 1 selection highlight
+ * VDP1 rects: ~7
+ *   6 carousel cards (1 distorted-sprite command each), 1 PLAY button plate
  * VDP2: menu text, bottom hints, title logo
  *============================================================================*/
 
@@ -1092,53 +1228,12 @@ static void coup_render_title(const coup_state_t* st)
 #endif
 
 #ifdef __SATURN__
-    /* 3. Animated portrait sprites scrolling full-width right-to-left (2x scaled) */
-    if (coup_anim_loaded()) {
-        int scroll = (st->anim_timer / 2) % L->scroll_total;
-        int i;
-
-        for (i = 0; i < COUP_NUM_CHARACTERS; i++) {
-            int x_in_tape = i * L->portrait_slot;
-            int x_rel = ((x_in_tape - scroll) % L->scroll_total
-                        + L->scroll_total) % L->scroll_total;
-            int screen_x = x_rel + L->scroll_zone_x;
-            int frame;
-
-            /* Wrap if off-screen right */
-            if (screen_x >= 320) {
-                screen_x -= L->scroll_total;
-            }
-
-            /* Skip if fully off-screen (display size is 64x96 after 2x scale) */
-            if (screen_x >= 320) continue;
-            if (screen_x + 64 <= 0) continue;
-
-            /* Staggered animation: each character at different phase */
-            frame = (st->frame_count / COUP_ANIM_HOLD_FRAMES + i * 5) % COUP_ANIM_FRAMES;
-            portrait_medallion(screen_x, L->portrait_y, 64, 96);
-            coup_anim_draw_scaled(i, frame, screen_x, L->portrait_y, 64, 96);
-        }
-    } else if (coup_sprites_loaded()) {
-        /* Fallback to static portraits if animated not available */
-        int scroll = (st->anim_timer / 2) % L->scroll_total;
-        int i;
-
-        for (i = 0; i < COUP_NUM_CHARACTERS; i++) {
-            int x_in_tape = i * L->portrait_slot;
-            int x_rel = ((x_in_tape - scroll) % L->scroll_total
-                        + L->scroll_total) % L->scroll_total;
-            int screen_x = x_rel + L->scroll_zone_x;
-
-            if (screen_x >= 320) {
-                screen_x -= L->scroll_total;
-            }
-
-            if (screen_x >= 320) continue;
-            if (screen_x + 64 <= 0) continue;
-
-            coup_sprites_draw(char_to_sprite(i), screen_x, L->portrait_y);
-        }
-    }
+    /* 3. Card carousel: the six cards (five character faces + the back)
+     * orbiting a vertical axis, the one nearest the camera enlarging as it
+     * approaches. Replaces the portrait parade that used to scroll here -
+     * see coup.h's coup_carousel_layout() doc comment for why. */
+    coup_carousel_draw(st->frame_count, L->carousel_cx, L->carousel_cy,
+                      L->carousel_radius_x);
 #endif
 
 #ifdef __SATURN__
@@ -1153,7 +1248,19 @@ static void coup_render_title(const coup_state_t* st)
      * yields a single 1,753 px mass with nothing else above 41 px. A skyline,
      * not letterforms. The sprite is the only branding the screen has.
      *
-     * Keyed on its dark backing, so no plate is drawn behind it. */
+     * Keyed on its dark backing, so no plate is drawn behind it.
+     *
+     * NOT gouraud-lit: see coup_fx_loader.h / convert_effects.py's
+     * --wordmark-rgb555 flag for why - MEASURED 2026-08-06, the RGB555
+     * texture a sheen needs (+32,768 B of WRAM-H .rodata, this bare-SGL
+     * build's whole program including .rodata loads into WRAM-H, so a VDP1
+     * texture asset is ALSO a WRAM-H cost, not just a VRAM one) overruns
+     * SGL's SortList by 2,900 B on top of the carousel's own footprint,
+     * against a 30,188 B baseline slack. VDP1 VRAM had 192,608 B free
+     * (gate D) - comfortable - but WRAM-H did not (gate F). Fixing this
+     * needs the sprite streamed from CD like the background scenes already
+     * are, not linked into the resident binary; out of scope for this
+     * pass. */
     if (coup_fx_loaded()) {
         coup_ui_draw(COUP_UI_WORDMARK, L->logo_pos.x, L->logo_pos.y);
     }
@@ -1454,8 +1561,23 @@ static void coup_render_connecting(const coup_state_t* st)
 #ifdef __SATURN__
 #endif
 
-    /* Connection panel */
-    panel_r(L->main_panel, COUP_PANEL_HEADER);
+    /* Connection panel.
+     *
+     * Reported repeatedly as "SO DARK" during "Dialing server...". Measured
+     * luma of the fills available here: PANEL_HEADER 30.3, PANEL_MID 33.4,
+     * PANEL_PROMPT 36.8, PANEL_LIGHT 44.6. This screen was using the DARKEST
+     * of them - and on Saturn screen_bg() is a no-op, so the only thing
+     * behind this panel is the streamed backdrop, which is itself the dimmest
+     * scene in the game (source median 15, the only one that hit the gamma
+     * clamp). Darkest panel over darkest scene is why lifting the artwork
+     * alone did not fix it.
+     *
+     * PANEL_LIGHT is +47% luma over PANEL_HEADER, and the gouraud lift on top
+     * costs nothing - it is the same command and the same fill as the flat
+     * rect it replaces (ST-013-R3 section 5.3). */
+    panel_grd(L->main_panel.x, L->main_panel.y,
+              L->main_panel.w, L->main_panel.h,
+              COUP_PANEL_LIGHT, COUP_GRD_RAISED);
     hline(L->main_panel.x, L->main_panel.y, L->main_panel.w, COUP_ACCENT_BLUE);
     hline(L->main_panel.x, L->main_panel.y + L->main_panel.h, L->main_panel.w, COUP_ACCENT_BLUE);
     vline(L->main_panel.x, L->main_panel.y, L->main_panel.h, COUP_ACCENT_BLUE);

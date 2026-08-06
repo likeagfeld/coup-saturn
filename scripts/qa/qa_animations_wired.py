@@ -68,6 +68,18 @@ REQUIRED = {
     "coup_challenge_resolved":
         "a resolved challenge never flashes - the table gets no signal "
         "that a bluff was just called",
+
+    # --- 2026-08-06 facelift task: title carousel + wordmark sheen ---
+    "coup_carousel_draw":
+        "the title carousel never spins - the deck sits static, nothing "
+        "orbits and the front card never enlarges",
+    "coup_carousel_layout":
+        "no card position/size/depth is ever computed - coup_carousel_draw "
+        "would have nothing to draw",
+    "coup_carousel_sort":
+        "cards are never put in back-to-front order - VDP1 has no depth "
+        "test, so without this the draw order (and therefore which card "
+        "ends up on top) is undefined",
 }
 
 # Built and tested but not yet driven by a game event. Listed explicitly so
@@ -87,9 +99,15 @@ SLOTS_MUST_DRAW = [
 
 SLOTS_KNOWN_UNDRAWN = {
     "COUP_GRD_SHEEN":
-        "the title wordmark is a keyed SPRITE and the gouraud helpers draw "
-        "POLYGONS; a plate behind it would show through the letters. Needs a "
-        "gouraud-enabled sprite path (CMDPMOD 2-0 = 100b) in saturn_vdp1.c",
+        "the title wordmark is a keyed SPRITE and needs an RGB555 (not "
+        "4bpp) copy to be gouraud-lit (ST-013-R3 p.94). That copy is coded "
+        "and tested (examples/coup/assets/convert_effects.py:"
+        "wordmark_rgb555_bytes, behind --wordmark-rgb555, default OFF) but "
+        "not wired: MEASURED 2026-08-06, its 32,768 B costs WRAM-H "
+        "headroom (this bare-SGL build's whole program, .rodata included, "
+        "loads into WRAM-H), and it alone exceeds the 30,188 B baseline "
+        "slack under SGL's SortList (gate F) - it needs a CD-streaming "
+        "path, not a resident array, before it can be lit",
 }
 
 RENDER_C = "examples/coup/coup_render.c"
@@ -182,7 +200,8 @@ def main():
     def slot_drawn(slot):
         """The slot appears in a draw call's argument list, either directly
         or through a local assigned from it."""
-        for fn in ("panel_grd", "panel_lit", "draw_rect_gouraud"):
+        for fn in ("panel_grd", "panel_lit", "draw_rect_gouraud",
+                  "saturn_vdp1_draw_sprite_gouraud"):
             if re.search(fn + r"\s*\([^;]*?\b" + slot + r"\b", src, re.S):
                 return True
         return bool(re.search(r"=\s*" + slot + r"\s*;", src))

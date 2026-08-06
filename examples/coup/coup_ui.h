@@ -172,11 +172,11 @@ typedef struct {
     int menu_y;
     int item_x[3];
     int item_w[3];
-    /* Portrait scroll constants */
-    int scroll_zone_x;
-    int portrait_y;
-    int portrait_slot;
-    int scroll_total;
+    /* Card carousel (replaces the old portrait-parade scroll constants -
+     * see coup.h's coup_carousel_layout() doc comment) */
+    int carousel_cx;
+    int carousel_cy;
+    int carousel_radius_x;
     /* Bottom bar hint positions (grid col, row) */
     int hint_row;
     int hint_l_col;
@@ -540,10 +540,14 @@ static const coup_ui_t __attribute__((unused)) COUP_UI = {
         .menu_y         = 172,
         .item_x         = {36, 136, 220},
         .item_w         = {60, 44, 72},
-        .scroll_zone_x  = 0,
-        .portrait_y     = 68,
-        .portrait_slot  = 112,
-        .scroll_total   = 560,
+        /* Same vertical band the old portrait parade occupied (portrait_y
+         * 68, 96px tall -> centre 116), so the carousel sits where players
+         * already look, between the wordmark (ends ~66) and the PLAY button
+         * (starts 172). radius_x=110 keeps every card's centre in 50..270,
+         * comfortably inside 0..320 even at the widest card (64px). */
+        .carousel_cx       = COUP_SCREEN_W / 2,
+        .carousel_cy       = 116,
+        .carousel_radius_x = 110,
         .hint_row       = 26,
         .hint_l_col     = 1,
         .hint_r_col     = 34,

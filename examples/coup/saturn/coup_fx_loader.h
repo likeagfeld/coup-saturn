@@ -60,7 +60,27 @@ bool coup_ui_draw_coins(int coins, int x, int y);
  * their own VDP1 commands (the coin-payout animation). */
 bool coup_ui_texture(int ui, uint32_t* out_offset, int* out_bank);
 
-/** Byte offset just past this loader's VDP1 data. */
-uint32_t coup_fx_vram_end(void);
+/**
+ * Deliberately NOT implemented: an RGB555 (colour mode 5) copy of the
+ * wordmark for saturn_vdp1_draw_sprite_gouraud() gouraud lighting.
+ *
+ * ST-013-R3 p.94 (VDP1_Manual.txt:4091-4094) says colour calculation on the
+ * wordmark's existing 4bpp colour-BANK texture "cannot be guaranteed", so a
+ * sheen effect would need a second, RGB-mode copy of the same art.
+ * examples/coup/assets/convert_effects.py already has this capability
+ * (wordmark_rgb555_bytes(), behind its opt-in --wordmark-rgb555 flag,
+ * default OFF) - but it is not wired here.
+ *
+ * MEASURED 2026-08-06 (facelift task): that texture is 32,768 B, and this
+ * bare-SGL build's whole program (.text + .rodata, not just .data/.bss)
+ * loads into WRAM-H at boot, so a VDP1 texture asset costs WRAM-H headroom
+ * too, not only VDP1 VRAM. VDP1 VRAM had 192,608 B free at the time
+ * (comfortable) but WRAM-H's slack under SGL's SortList was only 30,188 B
+ * - the texture alone is bigger than that budget, and with the title
+ * carousel's own small addition the combined build overran SortList by
+ * 2,900 B (scripts/qa/verify_facelift.py gate F). Wiring this needs the
+ * sprite streamed from CD, the way the background scenes already are
+ * (coup_bg_index.h / gate A), rather than linked into the resident binary.
+ */
 
 #endif /* COUP_FX_LOADER_H */

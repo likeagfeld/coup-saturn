@@ -715,6 +715,132 @@ int coup_gameover_fx_step(const coup_gameover_fx_t* gd);
 
 void coup_render_screen(const coup_state_t* st);
 
+/*============================================================================
+ * Title-screen card carousel
+ *
+ * "six card faces orbiting a vertical axis, continuously: cards rotate front
+ * to back in a circle, and the one at the front enlarges as if approaching"
+ * (2026-08-06 facelift task). Replaces the title screen's portrait parade
+ * (coup_render_title() used to scroll the 5 animated character portraits
+ * right-to-left in the same band) - both showcase the deck in the same
+ * ~96px strip above the menu, and the parade's medallion frame
+ * (portrait_medallion(): a brass border rect + a lit background rect drawn
+ * SEPARATELY from the portrait sprite) is redundant here because the six
+ * card assets already carry their own printed border (examples/coup/assets/
+ * convert_effects.py, all_opaque(): "A card face is a complete picture with
+ * its own border - there is no background to remove"). The carousel is
+ * therefore BOTH the requested effect and a net reduction in VDP1 commands:
+ * the parade drew 3 commands/character (2 medallion rects + 1 portrait
+ * sprite) x 5 = 15; the carousel draws exactly 1 distorted-sprite command
+ * per card x 6 = 6.
+ *
+ * All position/scale/depth maths below is a PURE function of an integer
+ * frame counter (no libm - reuses coup_shading_sin(), the same fixed-point
+ * quarter-wave table coup_shading.c already uses for the sheen/halo/pulse
+ * gradients), so it is host-testable exactly like saturn_distort_flip_quad()
+ * and saturn_coinfx_point() are (tests/coup/test_coup_carousel.c). Only
+ * coup_carousel_draw() below touches VDP1 VRAM.
+ *
+ * Depth model: cards trace a horizontal ellipse (x = lateral, "into/out of
+ * the screen" = depth), both taken from the SAME sine table 90 degrees
+ * (COUP_SHADING_PERIOD/4) apart, so depth is exactly the lateral value's
+ * "cosine". A card facing the camera dead-on (depth = +-1024) is at its
+ * WIDEST; a card seen edge-on (depth = 0, at the left/right extremes of the
+ * ellipse) is at its NARROWEST - the width term below is scaled by
+ * |depth|/1024 for exactly this reason. Height is scaled by SIGNED depth
+ * (near = big, far = small), which is what makes the FRONT card (depth =
+ * +1024) strictly the largest of the six: MEASURED (see the sizing constants
+ * below) the runner-up's area never exceeds ~10% of the front card's.
+ *============================================================================*/
+
+#define COUP_CAROUSEL_COUNT 6
+
+/* Card height range, px. H_MIN is a hardware floor as much as an artistic
+ * one - ST-013-R3 p.74 (VDP1_Manual.txt:3143-3144): "A negative value cannot
+ * be specified for the display width. Drawing cannot be guaranteed when a
+ * negative value is specified" - so this and W_FLOOR below must both be > 0
+ * for EVERY output, not just the common case. */
+#define COUP_CAROUSEL_H_MIN 24
+#define COUP_CAROUSEL_H_MAX 96
+
+/* Width floor, px. Reached when a card is edge-on (depth near 0) and the
+ * |depth|/1024 foreshortening term would otherwise collapse it toward zero -
+ * same ST-013-R3 citation as H_MIN above. */
+#define COUP_CAROUSEL_W_FLOOR 6
+
+typedef struct {
+    int cx, cy;      /* card centre, screen px */
+    int w, h;        /* display size, px - always > 0 */
+    int depth;       /* -1024..1024; higher = nearer the camera */
+    int card_id;     /* fixed per carousel SLOT (0..COUP_CAROUSEL_COUNT-1) -
+                       * identifies which of the six card textures this slot
+                       * shows; see coup_render.c's coup_carousel_card_ui()
+                       * for the card_id -> COUP_UI_* mapping */
+} coup_carousel_card_t;
+
+/**
+ * Compute all six cards' position/size/depth for animation frame `frame`.
+ *
+ * Periodic: coup_carousel_layout(frame, ...) == coup_carousel_layout(frame +
+ * K*COUP_SHADING_PERIOD, ...) for any integer K (positive, negative, or
+ * zero) - a free-running frame counter can run forever without drift,
+ * because every phase is reduced modulo COUP_SHADING_PERIOD before it
+ * reaches coup_shading_sin(). Pure - no hardware access.
+ *
+ * @param frame     any int (free-running counter; wraps internally)
+ * @param center_x  ellipse centre, screen px
+ * @param center_y  card vertical centre, screen px (constant for every card
+ *                  - the axis of rotation is vertical, so height never
+ *                  changes a card's ROW, only its size)
+ * @param radius_x  ellipse horizontal radius, screen px
+ * @param out       6 cards, out[i].card_id == i always (slot identity is
+ *                  fixed; only its position in the circle moves with frame)
+ */
+void coup_carousel_layout(int frame, int center_x, int center_y, int radius_x,
+                           coup_carousel_card_t out[COUP_CAROUSEL_COUNT]);
+
+/**
+ * Back-to-front draw order for a computed layout.
+ *
+ * VDP1 has no depth test - command order IS z-order (ST-013-R3 section 6.1 /
+ * the general Distorted/Normal/Scaled Sprite draw model: later commands
+ * paint over earlier ones with no comparison against anything already in the
+ * framebuffer). `out_order` lists card INDICES (into the same `cards` array
+ * passed in) from back (draw first) to front (draw last, so it ends up on
+ * top) - draw cards[out_order[0]] first, cards[out_order[
+ * COUP_CAROUSEL_COUNT-1]] last.
+ *
+ * Two cards symmetric about the front/back axis land on EXACTLY the same
+ * depth (coup_shading_sin() is a mirror-symmetric lookup table), so depth
+ * alone is not a strict order. The card's fixed card_id (0..5, unique)
+ * breaks every tie, so the composite (depth, card_id) key - and therefore
+ * this function's output order - is always a genuine total order: no two
+ * cards ever produce the same sort key, for any layout.
+ *
+ * Pure - no hardware access.
+ *
+ * @param cards      a layout, e.g. from coup_carousel_layout()
+ * @param out_order  [out] 6 indices into `cards`, a permutation of 0..5
+ */
+void coup_carousel_sort(const coup_carousel_card_t cards[COUP_CAROUSEL_COUNT],
+                         int out_order[COUP_CAROUSEL_COUNT]);
+
+#ifdef __SATURN__
+/**
+ * Compute and draw one frame of the carousel.
+ *
+ * Sorts back-to-front and issues one VDP1 Distorted Sprite command per card
+ * (saturn_vdp1_draw_sprite_scaled() - SOURCE size first, then DESTINATION;
+ * see that function's own doc comment for the shipped bug this parameter
+ * order caused elsewhere in this file). No-ops before coup_fx_load().
+ *
+ * @param frame     free-running frame counter (e.g. st->frame_count)
+ * @param cx,cy     ellipse centre / card row, screen px
+ * @param radius_x  ellipse horizontal radius, screen px
+ */
+void coup_carousel_draw(int frame, int cx, int cy, int radius_x);
+#endif
+
 #ifdef __SATURN__
 /** Upload the VDP1 gouraud gradient tables. Call once after the PAL is up. */
 void coup_render_init_shading(void);
