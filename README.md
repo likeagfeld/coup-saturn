@@ -50,7 +50,8 @@ Captured from the Saturn build running on hardware-accurate emulation.
 
 Grab the latest build from the [**Releases**](../../releases) page:
 
-- [**Coup - Beta Build - 1.0**](../../releases/latest) — the current public beta CD image (CUE / BIN / WAV).
+- [**Coup - Beta Build - 2.0**](../../releases/latest) — the current public beta CD image (CUE / BIN / WAV).
+- [Coup - Beta Build - 1.0](../../releases/tag/v1.0-beta) — the previous build.
 
 Burn the image to a CD-R or load it in your preferred Saturn optical drive emulator (ODE).
 
