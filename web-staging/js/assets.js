@@ -108,7 +108,15 @@ export function coinIcon(coins) {
     return UI.coin1;
 }
 
-export const BGM = asset('rebellion.mp3');
+/* assets/music/, NOT assets/. The OLD client serves a DIFFERENT
+ * rebellion.mp3 at /assets/rebellion.mp3 - 10,013,838 bytes against this
+ * one's 4,794,350, different md5 - and nginx serves /assets/ with
+ * `expires 7d, immutable`. Promoting this client to the site root while
+ * sharing that URL would hand every returning visitor the old 10 MB track
+ * for a week with no revalidation. A subdirectory the old root never had
+ * sidesteps it entirely; no cache-busting query would, because immutable
+ * means the browser will not even ask. */
+export const BGM = asset('music/rebellion.mp3');
 
 /* The Contessa easter egg. Kept from the live client - the official pack has
  * no equivalent, so dropping it would remove shipped functionality. */
