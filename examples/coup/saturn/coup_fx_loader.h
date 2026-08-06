@@ -56,6 +56,10 @@ bool coup_ui_draw(int ui, int x, int y);
  */
 bool coup_ui_draw_coins(int coins, int x, int y);
 
+/* Texture offset + CRAM bank of a UI sprite, for callers that issue
+ * their own VDP1 commands (the coin-payout animation). */
+bool coup_ui_texture(int ui, uint32_t* out_offset, int* out_bank);
+
 /** Byte offset just past this loader's VDP1 data. */
 uint32_t coup_fx_vram_end(void);
 

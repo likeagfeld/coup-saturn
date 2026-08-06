@@ -204,6 +204,14 @@ def main():
     improvements = []
     for name, n in sorted(counts.items()):
         b = base.get(name)
+        if b is None and n == 0:
+            # A new function that draws NO text is not a screen, so it has
+            # nothing to centre and does not belong in the baseline. This
+            # fired on coup_render_update_shading(), which only uploads
+            # gouraud tables. Admitting it would have meant re-baselining -
+            # and a ratchet that gets re-baselined to clear a false positive
+            # stops being a ratchet.
+            continue
         if b is None:
             regressions.append(f"{name}: new screen with {n} literal "
                                "placement(s) and no baseline")

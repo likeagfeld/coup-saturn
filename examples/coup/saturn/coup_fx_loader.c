@@ -166,6 +166,27 @@ bool coup_ui_draw(int ui, int x, int y)
                                    s_ui_offsets[ui], s_ui_bank[ui]);
 }
 
+/**
+ * Expose a UI sprite's VDP1 texture offset and CRAM bank.
+ *
+ * The coin-payout animation (saturn_coinfx.c) issues its own scaled-sprite
+ * commands so it can re-derive the top-left corner from a fixed centre each
+ * frame - saturn_vdp1_draw_sprite_scaled() anchors top-left, so growing the
+ * size alone would grow the coin down-and-right instead of popping it about
+ * its own centre. It therefore needs the texture, not a draw call.
+ *
+ * Returns false if the sprite is out of range or nothing is loaded yet.
+ */
+bool coup_ui_texture(int ui, uint32_t* out_offset, int* out_bank)
+{
+    if (!s_loaded || ui < 0 || ui >= COUP_UI_COUNT) {
+        return false;
+    }
+    if (out_offset) *out_offset = s_ui_offsets[ui];
+    if (out_bank)   *out_bank = s_ui_bank[ui];
+    return true;
+}
+
 bool coup_ui_draw_coins(int coins, int x, int y)
 {
     int ui;
