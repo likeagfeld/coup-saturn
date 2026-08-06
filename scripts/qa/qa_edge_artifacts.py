@@ -47,6 +47,13 @@ import sys
 import numpy as np
 from PIL import Image
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "examples", "coup", "assets"))
+try:
+    from convert_backgrounds import repair_edges
+except Exception:
+    repair_edges = None
+
 STEP = 60          # step against the adjacent pixel that means "different image"
 RUN = 6            # deepest edge run considered
 KEY_LUMA = 170.0   # mean of #FF00FF - the Saturn chroma key, never an artifact
@@ -124,6 +131,13 @@ def sweep():
                 im = Image.open(f).convert("RGB")
             except Exception:
                 continue
+            # Saturn assets are measured THROUGH the converter's repair,
+            # because that is what reaches the disc. Scanning the untouched
+            # masters judges art nobody ships and reports RED against a
+            # correct build - the same scoping mistake qa_fidelity and
+            # qa_portrait_registration each made once.
+            if name.startswith("sat/") and repair_edges is not None:
+                im = repair_edges(im)
             e = scan_image(np.asarray(im).astype(float))
             if e:
                 hits.append((os.path.basename(f), e))

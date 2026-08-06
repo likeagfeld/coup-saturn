@@ -178,6 +178,56 @@ def all_opaque(im):
     return [True] * (w * h)
 
 
+# A panel cut from a sheet can keep a row or column of its NEIGHBOUR on any
+# edge, not just the right one where it was first noticed. MEASURED on the
+# delivered art: B2_game_table and B3_lobby each carry a top ROW stepping ~100
+# against their interior, and the duke, captain and contessa card faces carry
+# one column on EACH side stepping 97-119.
+#
+# The run walks inward while each pixel is anomalous against the interior, and
+# stops at the first normal one. Walking while a pixel merely RESEMBLES ITS
+# PREDECESSOR looks equivalent and is not: a card edge reads 252, 146, 67, so
+# that version stops after one pixel and the repair then sources its
+# replacement from 146 - still damage. That mistake was made three times
+# before this comment was written.
+EDGE_STEP_DELTA = 60
+EDGE_MAX_RUN = 6
+
+
+def repair_edges(im):
+    """Replace edge rows/columns that are a slice of a neighbouring panel."""
+    import numpy as np
+
+    a = np.asarray(im.convert("RGB")).astype(np.uint8).copy()
+
+    def fix(axis):
+        g = a.astype(float).mean(axis=2)
+        n = g.shape[1] if axis == 1 else g.shape[0]
+        vals = g.mean(axis=0) if axis == 1 else g.mean(axis=1)
+        interior = float(np.median(vals[EDGE_MAX_RUN:-EDGE_MAX_RUN]))             if n > 2 * EDGE_MAX_RUN else float(np.median(vals))
+        for side in ("hi", "lo"):
+            rng = range(n - 1, n - 1 - EDGE_MAX_RUN, -1) if side == "hi"                 else range(EDGE_MAX_RUN)
+            idxs = []
+            for i in rng:
+                if abs(vals[i] - interior) <= EDGE_STEP_DELTA:
+                    break
+                idxs.append(i)
+            if not idxs:
+                continue
+            nxt = min(idxs) - 1 if side == "hi" else max(idxs) + 1
+            if nxt < 0 or nxt >= n:
+                continue
+            for i in idxs:
+                if axis == 1:
+                    a[:, i, :] = a[:, nxt, :]
+                else:
+                    a[i, :, :] = a[nxt, :, :]
+
+    fix(1)      # columns first
+    fix(0)      # then rows, re-measured against the corrected image
+    return Image.fromarray(a)
+
+
 def quantize_sequence(frames, name, mask_fn=None):
     """Shared palette across a sequence; the keyed colour becomes index 0.
 
@@ -187,7 +237,7 @@ def quantize_sequence(frames, name, mask_fn=None):
     opaque = []
     masks = []
     for im in frames:
-        rgb = im.convert("RGB")
+        rgb = repair_edges(im.convert("RGB"))
         if mask_fn is None:                 # magenta-keyed art
             rgb = defringe(rgb)
         px = list(rgb.getdata())

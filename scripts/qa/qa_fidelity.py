@@ -38,11 +38,13 @@ from PIL import Image, ImageFilter
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "examples", "coup", "assets"))
 try:
-    from convert_backgrounds import lift_shadows, trim_panel_seam
+    from convert_backgrounds import (lift_shadows, trim_panel_seam,
+                                     repair_edges)
     from convert_portraits import stretch_frames, repair_edge_columns
 except ImportError:
     lift_shadows = None
     trim_panel_seam = None
+    repair_edges = None
     stretch_frames = None
     repair_edge_columns = None
 
@@ -137,6 +139,13 @@ def check_background(scene, src_png, bin_path):
     ref = Image.open(src_png).convert("RGB")
     if trim_panel_seam is not None:
         ref, _t = trim_panel_seam(ref)
+    # FIFTH transform this reference has had to learn. Every time the
+    # converter gains a deliberate step and the reference does not, a correct
+    # conversion scores as a regression - shadow lift, seam trim, portrait
+    # stretch, portrait edge repair, and now background edge repair. The
+    # splash dropped to 24.9 dB on art that had converted perfectly.
+    if repair_edges is not None:
+        ref = repair_edges(ref)
     ref = ref.resize((w, h), Image.LANCZOS)
     if lift_shadows is not None:
         ref, _g = lift_shadows(ref)
