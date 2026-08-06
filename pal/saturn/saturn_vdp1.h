@@ -125,6 +125,28 @@
 
 #define SATURN_VDP1_RECT_GRD_PMOD (SATURN_VDP1_RECT_PMOD | VDP1_CCALC_GOURAUD)
 
+/* Draw mode for gouraud-shaded RGB555 SPRITES (color mode 5), as opposed to
+ * the flat-colour polygon above.
+ *
+ * ST-013-R3 p.94 ("Original Graphic", VDP1_Manual.txt:4091-4094):
+ *   "In parts (sprites) with an original graphic, color calculation other
+ *    than shadow is enabled only in the RGB mode (lookup table is RGB code
+ *    in color mode 1 and color mode 5). If not in the RGB mode (characters
+ *    in color bank mode), the results cannot be guaranteed."
+ *
+ * SATURN_VDP1_SPR_PMOD above is color mode 0 (16-color bank) - exactly the
+ * mode this passage rules out. A gouraud-shaded sprite therefore CANNOT
+ * reuse the existing 4bpp font/sprite texture path; its character pattern
+ * data must be RGB555 texel words (mode 5, MSB=1 per live pixel - same
+ * convention already used for polygon colours, see
+ * saturn_vdp1_encode_polygon) instead of 4bpp CRAM-bank indices. Mode 1
+ * (LUT with RGB-coded entries) is the only other guaranteed-correct option
+ * and is not implemented here. This is the identical restriction that
+ * already ruled out 4bpp for SATURN_VDP1_RECT_GRD_PMOD two lines up;
+ * sprites inherit it unchanged - RGB mode was already the established
+ * house answer to "gouraud needs an RGB source", not a new decision. */
+#define SATURN_VDP1_SPR_GRD_PMOD (VDP1_PMOD_ECD_DISABLE | VDP1_CMOD_RGB | VDP1_CCALC_GOURAUD)
+
 /*
  * Gouraud table pool.
  *
@@ -325,6 +347,32 @@ bool saturn_vdp1_draw_sprite_scaled(int x, int y,
                                      uint32_t tex_offset, int cram_bank);
 
 /**
+ * Draw a gouraud-shaded textured sprite using VDP1 Normal Sprite command.
+ *
+ * Unlike saturn_vdp1_draw_sprite(), the texture MUST be RGB555 texel data
+ * (color mode 5, one 16-bit word per pixel, MSB=1 for a live pixel,
+ * 0x0000 for transparent - see saturn_vdp1_encode_polygon's colr comment
+ * for the same MSB convention). A 4bpp/CRAM-bank texture uploaded via
+ * saturn_vdp1_upload_texture() for the plain sprite path is NOT valid
+ * input here: ST-013-R3 p.94 states gouraud results on a color-bank
+ * textured part "cannot be guaranteed" (SATURN_VDP1_SPR_GRD_PMOD comment
+ * has the full citation).
+ *
+ * Same gouraud table pool as saturn_vdp1_draw_rect_gouraud() - upload with
+ * saturn_vdp1_set_gouraud_table() first.
+ *
+ * @param x            X position (pixels, top-left)
+ * @param y            Y position (pixels, top-left)
+ * @param w            Width (must be multiple of 8)
+ * @param h            Height
+ * @param tex_offset   Byte offset of RGB555 texture in VDP1 VRAM
+ * @param slot         Gouraud pool slot uploaded via saturn_vdp1_set_gouraud_table
+ * @return true if drawn, false if budget exceeded
+ */
+bool saturn_vdp1_draw_sprite_gouraud(int x, int y, int w, int h,
+                                      uint32_t tex_offset, int slot);
+
+/**
  * Upload the built-in font to VDP1 VRAM as 4bpp textures.
  * Converts 1bpp font data to 4bpp and uploads 95 characters (ASCII 32-126).
  * Call once during initialization, after saturn_vdp1_init().
@@ -414,6 +462,26 @@ uint32_t saturn_vdp1_gouraud_slot_addr(int slot);
  * @param rgb555 Color in Saturn RGB555 format
  */
 void saturn_vdp1_encode_polygon(saturn_vdp1_cmd_t* cmd, int x, int y, int w, int h, uint16_t rgb555);
+
+/**
+ * Encode a gouraud-shaded Normal Sprite command (testable).
+ *
+ * Builds the command structure without writing to VRAM. See
+ * saturn_vdp1_draw_sprite_gouraud() for the RGB555-texture requirement and
+ * SATURN_VDP1_SPR_GRD_PMOD for the ST-013-R3 citation on why color mode 5
+ * is used instead of the 4bpp bank mode the plain sprite path uses.
+ *
+ * @param cmd         Output command structure
+ * @param x           X position (pixels, top-left)
+ * @param y           Y position (pixels, top-left)
+ * @param w           Width (must be multiple of 8)
+ * @param h           Height
+ * @param tex_offset  Byte offset of RGB555 texture in VDP1 VRAM
+ * @param slot        Gouraud pool slot (see saturn_vdp1_gouraud_slot_addr)
+ */
+void saturn_vdp1_encode_sprite_gouraud(saturn_vdp1_cmd_t* cmd,
+                                        int x, int y, int w, int h,
+                                        uint32_t tex_offset, int slot);
 
 /**
  * Encode an END command (testable).

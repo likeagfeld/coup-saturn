@@ -103,3 +103,85 @@ CUI_TEST(polygon_colour_is_marked_as_rgb_code)
     saturn_vdp1_encode_polygon(&cmd, 0, 0, 16, 16, 0xA063);
     CUI_ASSERT_EQ(0xA063, cmd.colr);
 }
+
+/*
+ * Gouraud-shaded TEXTURED SPRITE (Normal Sprite command + gouraud colour
+ * calculation), as opposed to the flat-colour polygon path above.
+ *
+ * ST-013-R3 p.94 (VDP1_Manual.txt:4091-4094): "In parts (sprites) with an
+ * original graphic, color calculation other than shadow is enabled only in
+ * the RGB mode (lookup table is RGB code in color mode 1 and color mode 5).
+ * If not in the RGB mode (characters in color bank mode), the results
+ * cannot be guaranteed."
+ *
+ * The existing 4bpp font/sprite path (SATURN_VDP1_SPR_PMOD) uses colour
+ * mode 0 (16-colour bank) - explicitly the mode the manual says is NOT
+ * guaranteed under gouraud. A gouraud sprite command must therefore select
+ * colour mode 5 (32,768 RGB), matching the precedent already set by
+ * SATURN_VDP1_RECT_GRD_PMOD for polygons (see comment above that macro).
+ */
+
+CUI_TEST(sprite_gouraud_uses_normal_sprite_command)
+{
+    saturn_vdp1_cmd_t cmd;
+    saturn_vdp1_encode_sprite_gouraud(&cmd, 10, 20, 16, 16, 0x1000, 0);
+    CUI_ASSERT_EQ(VDP1_CMD_NORMAL_SPRITE, cmd.ctrl);
+}
+
+CUI_TEST(sprite_gouraud_pmod_sets_gouraud_colour_calc_bit)
+{
+    /* Colour calculation bits are CMDPMOD 2-0; 100b = gouraud
+     * (ST-013-R3 p.93 / VDP1_Manual.txt:3935-3942). */
+    saturn_vdp1_cmd_t cmd;
+    saturn_vdp1_encode_sprite_gouraud(&cmd, 0, 0, 16, 16, 0x1000, 0);
+    CUI_ASSERT_EQ(VDP1_CCALC_GOURAUD, cmd.pmod & 0x7);
+}
+
+CUI_TEST(sprite_gouraud_pmod_selects_rgb_colour_mode_not_bank)
+{
+    /* Colour mode is CMDPMOD 5-3. Gouraud on a textured sprite is only
+     * guaranteed in mode 5 (RGB) or mode 1 (LUT-with-RGB-entries); this
+     * path picks mode 5, matching VDP1_CMOD_RGB, and must NOT be mode 0
+     * (colour bank) which is what the ungouraud-shaded sprite path uses. */
+    saturn_vdp1_cmd_t cmd;
+    saturn_vdp1_encode_sprite_gouraud(&cmd, 0, 0, 16, 16, 0x1000, 0);
+    CUI_ASSERT_EQ((unsigned)VDP1_CMOD_RGB, (unsigned)(cmd.pmod & (0x7u << 3)));
+    CUI_ASSERT(((cmd.pmod & (0x7u << 3)) >> 3) != 0);
+}
+
+CUI_TEST(sprite_gouraud_grda_matches_pool_slot_same_as_polygon_path)
+{
+    /* Same slot pool, same address/8 encoding as saturn_vdp1_draw_rect_gouraud
+     * (ST-013-R3 6.8 / VDP1_Manual.txt:4464-4480). */
+    saturn_vdp1_cmd_t cmd;
+    int slot = 3;
+    saturn_vdp1_encode_sprite_gouraud(&cmd, 0, 0, 16, 16, 0x1000, slot);
+    CUI_ASSERT_EQ((uint16_t)(saturn_vdp1_gouraud_slot_addr(slot) / 8), cmd.grda);
+}
+
+CUI_TEST(sprite_gouraud_colr_is_ignored_field_and_left_zero)
+{
+    /* ST-013-R3 6.4 Table 6.3 (VDP1_Manual.txt:4201-4211): "When it is a
+     * textured part in the RGB mode, this word [CMDCOLR] is ignored."
+     * There is no CRAM bank in RGB mode, so it is deterministically zeroed
+     * rather than carrying a stale bank value. */
+    saturn_vdp1_cmd_t cmd;
+    saturn_vdp1_encode_sprite_gouraud(&cmd, 0, 0, 16, 16, 0x1000, 0);
+    CUI_ASSERT_EQ(0, cmd.colr);
+}
+
+CUI_TEST(sprite_gouraud_srca_and_size_match_texture_and_dimensions)
+{
+    saturn_vdp1_cmd_t cmd;
+    saturn_vdp1_encode_sprite_gouraud(&cmd, 0, 0, 32, 24, 0x2000, 0);
+    CUI_ASSERT_EQ((uint16_t)(0x2000 / 8), cmd.srca);
+    CUI_ASSERT_EQ((uint16_t)(((32 / 8) << 8) | 24), cmd.size);
+}
+
+CUI_TEST(sprite_gouraud_position_sets_vertex_a)
+{
+    saturn_vdp1_cmd_t cmd;
+    saturn_vdp1_encode_sprite_gouraud(&cmd, 42, -7, 16, 16, 0x1000, 0);
+    CUI_ASSERT_EQ(42, cmd.xa);
+    CUI_ASSERT_EQ(-7, cmd.ya);
+}

@@ -654,3 +654,67 @@ bool saturn_vdp1_draw_rect_gouraud(int x, int y, int w, int h,
     g_vdp1_state.cmd_count++;
     return true;
 }
+
+/*============================================================================
+ * Gouraud-Shaded Textured Sprite
+ *
+ * Same colour-calculation bits as saturn_vdp1_draw_rect_gouraud, but on a
+ * Normal Sprite (textured) command instead of a flat-colour polygon. The
+ * texture MUST be RGB555 (colour mode 5) - see SATURN_VDP1_SPR_GRD_PMOD in
+ * saturn_vdp1.h for the ST-013-R3 citation on why the existing 4bpp
+ * colour-bank sprite path (SATURN_VDP1_SPR_PMOD) cannot be reused here.
+ *============================================================================*/
+
+void saturn_vdp1_encode_sprite_gouraud(saturn_vdp1_cmd_t* cmd,
+                                        int x, int y, int w, int h,
+                                        uint32_t tex_offset, int slot)
+{
+    if (!cmd) return;
+
+    memset(cmd, 0, sizeof(saturn_vdp1_cmd_t));
+
+    /* Normal Sprite command, same as saturn_vdp1_encode_sprite */
+    cmd->ctrl = VDP1_CMD_NORMAL_SPRITE;
+
+    /* Draw mode: ECD disable + RGB colour mode (5) + gouraud colour calc */
+    cmd->pmod = SATURN_VDP1_SPR_GRD_PMOD;
+
+    /* CMDCOLR is ignored for a textured part in RGB mode
+     * (ST-013-R3 6.4 Table 6.3 / VDP1_Manual.txt:4201-4211). There is no
+     * CRAM bank in RGB mode, so leave it deterministically zero rather
+     * than carry a stale/meaningless value. */
+    cmd->colr = 0x0000;
+
+    /* Texture address in VDP1 VRAM, divided by 8 - identical encoding to
+     * saturn_vdp1_encode_sprite. The texture data itself must be RGB555
+     * words, not 4bpp bank indices. */
+    cmd->srca = (uint16_t)(tex_offset / 8);
+
+    /* Size: high byte = width/8, low byte = height */
+    cmd->size = (uint16_t)(((w / 8) << 8) | h);
+
+    /* Position (top-left corner for normal sprites) */
+    cmd->xa = (int16_t)x;
+    cmd->ya = (int16_t)y;
+
+    /* Gouraud table address, divided by 8 - same pool, same encoding as
+     * saturn_vdp1_draw_rect_gouraud (ST-013-R3 6.8). Gouraud is
+     * write-only, so this costs no extra fill time over the plain sprite
+     * path (the framebuffer is never read back for this colour-calc mode). */
+    cmd->grda = (uint16_t)(saturn_vdp1_gouraud_slot_addr(slot) / 8);
+}
+
+bool saturn_vdp1_draw_sprite_gouraud(int x, int y, int w, int h,
+                                      uint32_t tex_offset, int slot)
+{
+    saturn_vdp1_cmd_t cmd;
+
+    if (!saturn_vdp1_check_budget(&g_vdp1_state)) {
+        return false;
+    }
+
+    saturn_vdp1_encode_sprite_gouraud(&cmd, x, y, w, h, tex_offset, slot);
+    saturn_vdp1_write_cmd(g_vdp1_state.cmd_count, &cmd);
+    g_vdp1_state.cmd_count++;
+    return true;
+}
