@@ -66,7 +66,7 @@ COMPUTED = re.compile(
 
 TEXT_CALL = re.compile(
     r"\b(draw_at|draw_text_sprite|button_centered|draw_centered_in"
-    r"|draw_centered)\s*\(")
+    r"|draw_centered|draw_text_fit)\s*\(")
 PLATE_CALL = re.compile(r"\b(panel|panel_r|panel_lit)\s*\(")
 
 

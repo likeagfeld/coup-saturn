@@ -234,6 +234,57 @@ int coup_centre_x(int container_w, int text_w)
     return x < 0 ? 0 : x;
 }
 
+/* Longest string draw_text_fit() will consider. The widest thing that reaches
+ * it is a log line, COUP_LOG_LINE_LEN + 1 = 40 bytes. */
+#define COUP_FIT_MAX 48
+
+/**
+ * Draw `text` at (x, y), trimmed to the last WHOLE character that still ends
+ * at or before `right_edge`.
+ *
+ * For the text whose content is not known when the layout is written: log
+ * lines, player names, anything from the wire. Those are bounded in
+ * CHARACTERS by coup.h (COUP_LOG_LINE_LEN, COUP_MAX_NAME) and the bound is
+ * generous - a 39-character log line is 312 px, and the boxes it is drawn in
+ * are 256 to 258 px wide. So every log view drew past its own panel, and the
+ * game-over recap and the connecting screen drew past the 320 px SCREEN as
+ * well. Reported as text extending past its box and outside the lines.
+ *
+ * Trimming here rather than lowering COUP_LOG_LINE_LEN because the three log
+ * views have three different widths: the game log has 302 px to play with,
+ * the recap 254 and the connecting panel 252. One shared character cap would
+ * have to be the smallest of those, and would throw away text the widest view
+ * has room for. This is presentation, so it belongs in the renderer.
+ *
+ * The budget is measured with text_px_w(), the same function the centring
+ * helpers use, so it is correct for whichever font is ACTIVE. A budget
+ * computed as (right_edge - x) / COUP_FONT_ADVANCE would be one character
+ * optimistic in the display face, whose cell is 16 px on an 8 px advance.
+ */
+static void draw_text_fit(int x, int y, int right_edge, const char* text,
+                          uint32_t color)
+{
+    static char buf[COUP_FIT_MAX];
+    int avail = right_edge - x;
+    int n = 0;
+
+    if (!text || avail <= 0) {
+        return;
+    }
+    while (text[n] != '\0' && n < COUP_FIT_MAX - 1) {
+        buf[n] = text[n];
+        n++;
+    }
+    buf[n] = '\0';
+    while (n > 0 && text_px_w(buf) > avail) {
+        n--;
+        buf[n] = '\0';
+    }
+    if (n > 0) {
+        CUI_DISPLAY()->draw_text_sprite(x, y, buf, color);
+    }
+}
+
 /**
  * Draw `text` centred inside the pixel span `x`..`x + w`, at pixel row `y`.
  *
@@ -1698,9 +1749,13 @@ static void coup_render_connecting(const coup_state_t* st)
             if (idx < 0) {
                 continue;
             }
-            CUI_DISPLAY()->draw_text_sprite(L->log_list.x,
-                                     L->log_list.base_y + li * L->log_list.spacing,
-                                     st->log[idx], COUP_TEXT_GRAY);
+            /* Trimmed to the panel. A full-length log line is 39 characters
+             * = 312 px from x=40, ending at 352: 56 px past this panel's
+             * right edge at 296 and 32 px past the screen itself. */
+            draw_text_fit(L->log_list.x,
+                          L->log_list.base_y + li * L->log_list.spacing,
+                          L->main_panel.x + L->main_panel.w - 4,
+                          st->log[idx], COUP_TEXT_GRAY);
         }
     }
 
@@ -2447,7 +2502,14 @@ static void render_phase_select_target(const coup_state_t* st)
             panel(ST->item_x, py, ST->item_w, ST->item_h, COUP_PANEL_PROMPT);
         }
 
-        snprintf(line, sizeof(line), " %s %-12s $%d", cursor, p->name, p->coins);
+        /* %-10.10s, not %-12s. A width PADS, it does not truncate, so a
+         * 15-character name made this row 23 characters = 184 px starting at
+         * 80, ending at 264 - 20 px past the 76..244 item plate it is
+         * highlighted on. The precision caps the name at 10 and the width
+         * keeps the "$n" column aligned, so the row is at most 18 characters
+         * = 144 px whatever the player is called. */
+        snprintf(line, sizeof(line), " %s %-10.10s $%d", cursor, p->name,
+                 p->coins);
         CUI_DISPLAY()->draw_text_sprite(ST->item_x + COUP_ITEM_TEXT_INSET,
                                         py + ST->item_text_offset_y, line,
                                         color);
@@ -2655,11 +2717,23 @@ static void render_phase_idle_resolving(const coup_state_t* st)
         }
     }
     is_my_turn = (st->my_id == st->current_turn_id);
+    /* Both lines SHORTENED to fit the idle panel, which is GAME_CONTENT_W =
+     * 168 px wide at x=76 with its text inset to 80 - 164 px, or 20
+     * characters of the body face.
+     *
+     *   "Waiting for decision..."  was 23 chars = 184 px, ending at 264
+     *   "Waiting for %s..."        was 30 chars with a full-length name,
+     *                              240 px, ending at 320 - 76 px past the
+     *                              panel and hard against the screen edge
+     *
+     * The name is now bounded by the format itself (%.8s), the same
+     * eight-character budget the opponent seats give a name
+     * (coup_seats_layout_t.max_name_chars), so the two agree. */
     if (is_my_turn) {
-        snprintf(line, sizeof(line), "Waiting for decision...");
+        snprintf(line, sizeof(line), "Awaiting decision");
         CUI_DISPLAY()->draw_text_sprite(ID->text_x, ID->text_y, line, COUP_TEXT_GREEN);
     } else {
-        snprintf(line, sizeof(line), "Waiting for %s...", turn_name);
+        snprintf(line, sizeof(line), "Waiting: %.8s...", turn_name);
         CUI_DISPLAY()->draw_text_sprite(ID->text_x, ID->text_y, line, COUP_TEXT_GRAY);
     }
 }
@@ -2678,8 +2752,18 @@ static void render_your_hand(const coup_state_t* st)
 
     if (!self) return;
 
+    /* The name sits in the GAP between the two card faces, not in the whole
+     * hand panel: card 0 ends at card0_x + COUP_CARD_ART_W = 124 and card 1
+     * begins at card1_x = 196, and the cards are drawn AFTER this, so a name
+     * running past 196 is not merely tight - it is painted over by the card
+     * art. coup_ui.h says as much at .card0_x ("a 72 px gap in the middle,
+     * which the name and coin counter already fit"), which was true of "YOU"
+     * and not of a 15-character name: that one ran to 248, 52 px into card 1.
+     * Trimmed to the gap, giving the same eight characters the opponent seats
+     * allow. */
     if (!self->alive) {
-        CUI_DISPLAY()->draw_text_sprite(H->name_x, H->name_y, self->name, COUP_TEXT_GRAY);
+        draw_text_fit(H->name_x, H->name_y, H->card1_x - 4, self->name,
+                      COUP_TEXT_GRAY);
         CUI_DISPLAY()->draw_text_sprite(H->coins_x, H->coins_y, "DEAD", COUP_TEXT_RED);
         return;
     }
@@ -2687,7 +2771,8 @@ static void render_your_hand(const coup_state_t* st)
     /* Player name (green highlight when it's our turn) */
     {
         uint32_t name_color = is_my_turn ? COUP_TEXT_GREEN : COUP_TEXT_WHITE;
-        CUI_DISPLAY()->draw_text_sprite(H->name_x, H->name_y, self->name, name_color);
+        draw_text_fit(H->name_x, H->name_y, H->card1_x - 4, self->name,
+                      name_color);
     }
 
     /* Card 0 */
@@ -2835,7 +2920,14 @@ static void render_game_log(const coup_state_t* st)
 
         age = visible_lines - 1 - i;
         log_color = (age == 0 && scroll == 0) ? COUP_TEXT_WHITE : COUP_TEXT_GRAY;
-        CUI_DISPLAY()->draw_text_sprite(GL->text_x, py, st->log[ring_idx], log_color);
+        /* Trimmed to clear the scroll arrow. This view has the whole 320 px
+         * to itself, so a 39-character line at x=4 ends at 316 and stays on
+         * screen - but the arrow drawn above is at scroll_arrow_x = 308, and
+         * the line's last character occupies exactly 308..316. The two were
+         * printed on top of each other whenever the log was long enough to
+         * scroll, which is precisely when the arrow matters. */
+        draw_text_fit(GL->text_x, py, GL->scroll_arrow_x - 2,
+                      st->log[ring_idx], log_color);
     }
 }
 
@@ -3138,9 +3230,14 @@ static void coup_render_game_over(const coup_state_t* st)
                 CUI_DISPLAY()->draw_text_sprite(panel_x + 4, y, ">",
                                                 COUP_TEXT_GOLD);
             }
-            CUI_DISPLAY()->draw_text_sprite(
-                panel_x + 14, y, st->log[idx],
-                last ? COUP_TEXT_GOLD : COUP_TEXT_GRAY);
+            /* Trimmed to the recap panel. The rows start at panel_x + 14 to
+             * clear the ">" marker column, so a 39-character line ran from 38
+             * to 350 - 54 px past the panel's right edge at 296, and 30 px
+             * past the screen. This is the game-over screen every offline
+             * match ends on, so it is the overflow that gets seen most. */
+            draw_text_fit(panel_x + 14, y, panel_x + panel_w - 4,
+                          st->log[idx],
+                          last ? COUP_TEXT_GOLD : COUP_TEXT_GRAY);
         }
 
         if (total > max_rows) {

@@ -1,0 +1,62 @@
+{
+  "coup_render_connecting": {
+    "overflow": 0,
+    "unresolved": 1
+  },
+  "coup_render_game_over": {
+    "overflow": 0,
+    "unresolved": 2
+  },
+  "coup_render_lobby": {
+    "overflow": 0,
+    "unresolved": 2
+  },
+  "coup_render_name_entry": {
+    "overflow": 0,
+    "unresolved": 0
+  },
+  "coup_render_rules": {
+    "overflow": 0,
+    "unresolved": 0
+  },
+  "coup_render_screen": {
+    "overflow": 0,
+    "unresolved": 0
+  },
+  "coup_render_settings": {
+    "overflow": 0,
+    "unresolved": 1
+  },
+  "coup_render_title": {
+    "overflow": 0,
+    "unresolved": 3
+  },
+  "render_corners": {
+    "overflow": 0,
+    "unresolved": 0
+  },
+  "render_game_log": {
+    "overflow": 0,
+    "unresolved": 0
+  },
+  "render_phase_idle_resolving": {
+    "overflow": 0,
+    "unresolved": 0
+  },
+  "render_phase_select_target": {
+    "overflow": 0,
+    "unresolved": 0
+  },
+  "render_selection_list": {
+    "overflow": 0,
+    "unresolved": 0
+  },
+  "render_single_seat": {
+    "overflow": 0,
+    "unresolved": 0
+  },
+  "render_your_hand": {
+    "overflow": 0,
+    "unresolved": 0
+  }
+}
