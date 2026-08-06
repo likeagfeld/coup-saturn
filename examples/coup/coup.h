@@ -250,7 +250,26 @@ typedef struct {
     bool lobby_naming;       /* true = name entry overlay active */
 
     /* Game over */
+
+    /* SEAT INDEX, valid only for the lifetime of the game that produced it.
+     * coup_start_game() normalises players[i].id to i, so during a game seat
+     * index and id agree - but a LOBBY_STATE message arriving while the
+     * game-over screen is still up rewrites players[].id back to WIRE ids,
+     * and my_id is not restored until the player confirms. Anything derived
+     * from this after that point is wrong. Use i_won, not this. */
     uint8_t winner_id;
+
+    /* Did the local player win? Snapshotted when GAME_OVER fires, for the
+     * same reason winner_name is: it must survive a LOBBY_STATE overwrite.
+     *
+     * The banner used to recompute this live as
+     *     find_self(st)->id == st->winner_id
+     * and find_self() scans for is_self, which is precisely what that
+     * overwrite corrupts - so a winning player was shown DEFEAT. The name
+     * beside the banner stayed correct throughout, because it was already
+     * snapshotted, which is why the two disagreed on screen. */
+    bool i_won;
+
     char winner_name[COUP_MAX_NAME];  /* Snapshot at game-over time */
     int round_number;
 

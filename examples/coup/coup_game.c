@@ -946,6 +946,12 @@ static void process_rule_events(const coup_event_t* events, int count)
             /* Snapshot winner name now — LOBBY_STATE may overwrite players[] */
             coup_strcpy(g_state.winner_name,
                         g_state.players[winner].name, COUP_MAX_NAME);
+            /* Snapshot the RESULT for the same reason, and at the same
+             * moment. Both `winner` and my_id are seat indices here; after a
+             * LOBBY_STATE arrives they no longer are, and anything recomputed
+             * later gets it wrong. */
+            g_state.winner_id = winner;
+            g_state.i_won = (winner == g_state.my_id);
             if (winner == g_state.my_id) {
                 coup_log("You win! Victory!");
                 coup_audio_play_sfx(COUP_SFX_VICTORY);

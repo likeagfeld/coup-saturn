@@ -2246,8 +2246,10 @@ static void coup_render_game_over(const coup_state_t* st)
     /* VICTORY or DEFEAT banner from the official art, centred above the text.
      * The banner is 128x32; centring is computed, not hard-coded. */
     if (coup_fx_loaded()) {
-        const coup_player_t* me = find_self(st);
-        int won = (me && me->id == st->winner_id);
+        /* Snapshotted at GAME_OVER, not recomputed. find_self() scans for
+         * is_self, which a LOBBY_STATE arriving while this screen is up
+         * corrupts - that is what showed DEFEAT to a winner. */
+        int won = st->i_won;
 
         /* A blooming spotlight plate behind the banner. Drawn BEFORE the
          * banner so the sprite sits inside the light rather than under a
@@ -2448,11 +2450,11 @@ void coup_render_screen(const coup_state_t* st)
                 case COUP_SCREEN_GAME_OVER: {
                     /* The outcome decides the backdrop. Same test the VICTORY
                      * / DEFEAT banner uses, so art and backdrop can never
-                     * disagree about who won. */
-                    const coup_player_t* me = find_self(st);
-                    scene = (me && me->id == st->winner_id)
-                            ? COUP_BG_SCENE_VICTORY
-                            : COUP_BG_SCENE_DEFEAT;
+                     * disagree about who won - which means it had the same
+                     * bug, and a winner got the defeat BACKDROP too. Both now
+                     * read the snapshot taken when GAME_OVER fired. */
+                    scene = st->i_won ? COUP_BG_SCENE_VICTORY
+                                      : COUP_BG_SCENE_DEFEAT;
                     break;
                 }
                 /* Title, settings and name entry share the title art
