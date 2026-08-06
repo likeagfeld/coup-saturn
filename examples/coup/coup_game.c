@@ -1693,7 +1693,7 @@ static void update_name_entry(cui_input_action_t action)
         g_name_char_idx[g_state.name_cursor] = idx;
         /* Auto-extend name if cursor is at the end */
         if (g_state.name_cursor >= g_state.name_len
-            && g_state.name_cursor < COUP_MAX_NAME - 1) {
+            && g_state.name_cursor < COUP_NAME_ENTRY_MAX) {
             g_state.name_len = g_state.name_cursor + 1;
             g_state.name_buf[g_state.name_len] = '\0';
         }
@@ -1710,7 +1710,7 @@ static void update_name_entry(cui_input_action_t action)
         g_name_char_idx[g_state.name_cursor] = idx;
         /* Auto-extend name if cursor is at the end */
         if (g_state.name_cursor >= g_state.name_len
-            && g_state.name_cursor < COUP_MAX_NAME - 1) {
+            && g_state.name_cursor < COUP_NAME_ENTRY_MAX) {
             g_state.name_len = g_state.name_cursor + 1;
             g_state.name_buf[g_state.name_len] = '\0';
         }

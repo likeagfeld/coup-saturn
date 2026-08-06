@@ -25,6 +25,28 @@
 #define COUP_CARDS_PER_PLAYER  2
 #define COUP_DECK_SIZE         15   /* 3 copies of 5 characters */
 #define COUP_MAX_NAME          16
+
+/* Longest name a player may ENTER, excluding the terminator.
+ *
+ * COUP_MAX_NAME (16) is the protocol's field width and does NOT change - the
+ * server and the web client keep sending up to 15 characters, so nothing on
+ * the wire moves.
+ *
+ * This is a UI limit on what this client lets you type, and it exists because
+ * of a measurement: the game screen's seat column is GAME_SEAT_W = 68 px, and
+ * the body face draws 8 px per character, so 8 characters is what physically
+ * fits. A 15-character name is 120 px - 56 px past its own box, over the
+ * table art.
+ *
+ * A cap at ENTRY is not the same thing as truncating at draw time, which was
+ * ruled out. The player sees the limit while typing and chooses a name that
+ * fits; nothing they picked is silently cut afterwards.
+ *
+ * LIMITATION, stated plainly: this only bounds names typed on THIS client. A
+ * web player can still join with 15 characters, and their seat label will
+ * still overrun. Fixing that for everyone means either the server enforcing
+ * it or the seat column growing, and both are larger decisions than this. */
+#define COUP_NAME_ENTRY_MAX     8
 #define COUP_LOG_LINES         6
 #define COUP_LOG_LINE_LEN      39   /* 40 cols - 1 for null */
 #define COUP_INITIAL_COINS     2
