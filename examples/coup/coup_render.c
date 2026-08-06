@@ -532,6 +532,62 @@ int coup_reveal_active_count(const coup_reveal_t* rv)
 }
 
 /*============================================================================
+ * Game-over entrance dissolve
+ *
+ * See coup.h for the contract and the design-doc citation. Pure, in the
+ * exact style of the card-reveal machine above it: coup_gameover_fx_observe()
+ * diffs `st->screen` the same way coup_render_screen()'s own s_last_screen
+ * static already does, just made host-testable and given a frame counter.
+ *============================================================================*/
+
+void coup_gameover_fx_init(coup_gameover_fx_t* gd)
+{
+    if (!gd) {
+        return;
+    }
+    gd->prev_screen = -1;
+    gd->step = COUP_GAMEOVER_DISSOLVE_FRAMES;   /* not dissolving until seen */
+    gd->seeded = false;
+}
+
+void coup_gameover_fx_observe(coup_gameover_fx_t* gd, const coup_state_t* st)
+{
+    if (!gd || !st) {
+        return;
+    }
+    /* Only arm on a genuine ENTRY, and only once we have a real previous
+     * observation - the first frame ever seen must not look like a
+     * transition, exactly the reason coup_reveal_observe() gates on
+     * rv->seeded before reacting to a diff. */
+    if (gd->seeded && gd->prev_screen != (int)st->screen &&
+        st->screen == COUP_SCREEN_GAME_OVER) {
+        gd->step = 0;
+    }
+    gd->prev_screen = (int)st->screen;
+    gd->seeded = true;
+}
+
+void coup_gameover_fx_tick(coup_gameover_fx_t* gd)
+{
+    if (!gd) {
+        return;
+    }
+    if (gd->step < COUP_GAMEOVER_DISSOLVE_FRAMES) {
+        gd->step++;
+    }
+}
+
+bool coup_gameover_fx_dissolving(const coup_gameover_fx_t* gd)
+{
+    return gd && gd->step < COUP_GAMEOVER_DISSOLVE_FRAMES;
+}
+
+int coup_gameover_fx_step(const coup_gameover_fx_t* gd)
+{
+    return gd ? gd->step : COUP_GAMEOVER_DISSOLVE_FRAMES;
+}
+
+/*============================================================================
  * Log window arithmetic
  *
  * See coup.h for what this is and why all three log views share it.
@@ -677,6 +733,37 @@ void coup_fx_remember(coup_fx_prev_t* prev, const coup_state_t* st)
     prev->blocker_id = st->blocker_id;
 }
 
+/** See coup.h for the contract - reuses coup_fx_prev_t's `phase`, added no
+ * new observed state. Must be called BEFORE coup_fx_remember() updates
+ * `prev` for this frame, the same ordering fx_observe() already uses for
+ * coup_fx_on_transition(). */
+bool coup_challenge_resolved(const coup_fx_prev_t* prev, const coup_state_t* st)
+{
+    if (!prev || !st) {
+        return false;
+    }
+    if ((int)st->phase == prev->phase) {
+        return false;
+    }
+    return prev->phase == COUP_PHASE_CHALLENGE_WAIT ||
+           prev->phase == COUP_PHASE_BLOCK_CHALLENGE;
+}
+
+/** See coup.h for the contract. */
+int coup_pick_winner_char(const uint8_t cards[COUP_CARDS_PER_PLAYER])
+{
+    int k;
+
+    if (!cards) {
+        return COUP_CHAR_NONE;
+    }
+    for (k = 0; k < COUP_CARDS_PER_PLAYER; k++) {
+        if (cards[k] < COUP_NUM_CHARACTERS) {
+            return (int)cards[k];
+        }
+    }
+    return COUP_CHAR_NONE;
+}
 
 static const coup_player_t* find_self(const coup_state_t* st)
 {
@@ -765,6 +852,18 @@ static void fx_observe(const coup_state_t* st)
         s_fx_x = COUP_SCREEN_W / 2;
         s_fx_y = 84 + 32;
     }
+
+    /* "Flash-white for challenge results" (design doc section 4.2, "All
+     * transitions"). Must run BEFORE coup_fx_remember() updates s_fx_prev
+     * for this frame - coup_challenge_resolved() reads the phase s_fx_prev
+     * still holds from last frame. Composed entirely from the existing
+     * colour-offset fade module (saturn_fade.h); this is a trigger and a
+     * call site, not new PAL code. */
+    if (coup_challenge_resolved(&s_fx_prev, st)) {
+        saturn_fade_start(SATURN_FADE_WHITE, SATURN_FADE_NONE,
+                          COUP_CHALLENGE_FLASH_FRAMES, true);
+    }
+
     coup_fx_remember(&s_fx_prev, st);
 }
 
@@ -820,6 +919,10 @@ static void fx_render(void)
 #define COUP_REVEAL_STAGE_PITCH 56
 
 static coup_reveal_t s_reveal;
+
+/* Game-over entrance dissolve (coup.h) - observed on every screen alongside
+ * s_reveal, for the identical re-seeding reason. */
+static coup_gameover_fx_t s_gameover_fx;
 
 /** Is this card mid-animation? Used to suppress the static face under it. */
 static bool reveal_busy(int player_index, int card_index)
@@ -2677,22 +2780,92 @@ static void coup_render_game_over(const coup_state_t* st)
 #endif
 
 #ifdef __SATURN__
-    /* VICTORY or DEFEAT banner from the official art, centred above the text.
-     * The banner is 128x32; centring is computed, not hard-coded. */
+    /* Winner portrait, gouraud spotlight, and the VICTORY/DEFEAT banner from
+     * the official art - design doc section 4.2 "Game over": "winner
+     * portrait scaled up with a gouraud spotlight; mesh + colour-offset
+     * dissolve into it." The banner is 128x32; its position is unchanged
+     * from before this treatment existed, so it now draws OVER the lower
+     * portion of the portrait, matching the doc's own draw-order rule
+     * (section 4.6 item 2: draw order is blend order, later covers
+     * earlier) - the same z-order trick reveal_render() already uses to
+     * crop a flipping card against its hand slot. */
     if (coup_fx_loaded()) {
         /* Snapshotted at GAME_OVER, not recomputed. find_self() scans for
          * is_self, which a LOBBY_STATE arriving while this screen is up
          * corrupts - that is what showed DEFEAT to a winner. */
         int won = st->i_won;
+        /* st->winner_char is likewise a GAME_OVER-time snapshot (coup.h) -
+         * a COUP_CHAR_* value, or COUP_CHAR_NONE if coup_pick_winner_char()
+         * found no identifiable card (should not happen for a live winner;
+         * guarded rather than assumed). */
+        bool have_portrait = st->winner_char < COUP_NUM_CHARACTERS
+                              && coup_anim_loaded();
 
-        /* A blooming spotlight plate behind the banner. Drawn BEFORE the
-         * banner so the sprite sits inside the light rather than under a
-         * wash - the plate is opaque, for the same reason the turn halo is
-         * (design doc section 4.6 items 7-8: no translucent overlays here).
-         * It breathes, so the game-over screen is not a still image. */
-        panel_grd((COUP_SCREEN_W - 160) / 2, 32, 160, 48,
-                  won ? COUP_PANEL_SELECT : COUP_PANEL_DARK,
-                  COUP_GRD_SPOTLIGHT);
+        /* Enlarged 1.5x from the 64x96 native asset (coup_anim_loader.h,
+         * COUP_ANIM_W/H) - "scaled up", per the doc. Centred on the same
+         * horizontal axis the banner already uses; top-anchored so its
+         * upper (face/shoulders) portion stays clear of both the banner
+         * and the winner-name panel below. */
+        {
+            const int port_w = (COUP_ANIM_W * 3) / 2;   /* 96 */
+            const int port_h = (COUP_ANIM_H * 3) / 2;   /* 144 */
+            const int port_x = (COUP_SCREEN_W - port_w) / 2;
+            const int port_y = 0;
+            const int port_cx = port_x + port_w / 2;
+            const int port_cy = port_y + port_h / 2;
+
+            /* A blooming spotlight plate behind the portrait. Drawn BEFORE
+             * it so the sprite sits inside the light rather than under a
+             * wash - the plate is opaque, for the same reason the turn
+             * halo is (design doc section 4.6 items 7-8: no translucent
+             * overlays here). It breathes, so the game-over screen is not
+             * a still image. Sized around the portrait rather than the
+             * banner now, with an 8px margin so the glow reads past the
+             * art's own transparent edge. */
+            panel_grd(port_x - 8, port_y, port_w + 16, port_h + 8,
+                      won ? COUP_PANEL_SELECT : COUP_PANEL_DARK,
+                      COUP_GRD_SPOTLIGHT);
+
+            if (have_portrait) {
+                /* "mesh + colour-offset dissolve into it": for the first
+                 * COUP_GAMEOVER_DISSOLVE_FRAMES frames after this screen
+                 * appears, the portrait draws through
+                 * saturn_distort_draw_mesh_dissolve() (VDP1 Mesh Enable, a
+                 * free 50% checkerboard - ST-013-R3 section 6.3,
+                 * VDP1_Manual.txt:3338-3343) instead of its normal solid
+                 * draw, composed with the SAME saturn_fade_start()
+                 * colour-offset ramp coup_render_screen() already starts
+                 * on entry (12 frames, matching
+                 * COUP_GAMEOVER_DISSOLVE_FRAMES) rather than a third fade
+                 * mechanism - both effects finish together.
+                 *
+                 * Drawn at the asset's NATIVE size: saturn_distort_draw_
+                 * mesh_dissolve() feeds one w/h into both the on-screen
+                 * quad and CMDSIZE's source-texture field
+                 * (saturn_distort.c), so a scaled draw here would tell
+                 * VDP1 to sample past the actual 64x96 texture. The brief
+                 * size difference against the settled 1.5x portrait reads
+                 * as the portrait growing into place, not a mismatch. */
+                if (coup_gameover_fx_dissolving(&s_gameover_fx)) {
+                    uint32_t tex_offset;
+                    int bank;
+
+                    if (coup_anim_texture((int)st->winner_char, 0,
+                                          &tex_offset, &bank)) {
+                        uint32_t slot_addr = saturn_vdp1_reserve_cmd_slot();
+                        if (slot_addr != 0) {
+                            saturn_distort_draw_mesh_dissolve(
+                                slot_addr, port_cx, port_cy,
+                                COUP_ANIM_W, COUP_ANIM_H,
+                                tex_offset, bank);
+                        }
+                    }
+                } else {
+                    coup_anim_draw_scaled((int)st->winner_char, 0,
+                                          port_x, port_y, port_w, port_h);
+                }
+            }
+        }
 
         coup_ui_draw(won ? COUP_UI_VICTORY : COUP_UI_DEFEAT,
                      (COUP_SCREEN_W - 128) / 2, 40);
@@ -2860,6 +3033,14 @@ void coup_render_screen(const coup_state_t* st)
          * game screen: coup_reveal_observe() re-seeds itself off the game
          * screen, and that is what keeps the next match's deal silent. */
         coup_reveal_observe(&s_reveal, st);
+
+        /* Arm the game-over entrance dissolve the frame GAME_OVER appears,
+         * and advance it every frame after. Same "run on every screen"
+         * reasoning as coup_reveal_observe() just above: re-seeding off
+         * other screens is what stops the NEXT match's game-over from
+         * replaying a stale dissolve. */
+        coup_gameover_fx_observe(&s_gameover_fx, st);
+        coup_gameover_fx_tick(&s_gameover_fx);
 
         /* Advance and draw any coins in flight. The draw issues its own
          * scaled-sprite commands so it can hold the coin's CENTRE fixed

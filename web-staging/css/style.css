@@ -363,13 +363,24 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
     aspect-ratio: 2 / 3;
 }
 
-/* steps() count comes from the frame count in assets.js (8). Walking
-   background-position-x 0% -> 100% over a strip whose background-size is
-   800% wide lands exactly on frames 0..7. A mismatched step count shows two
-   half-frames at once, which reads as tearing. */
+/* MUST be jump-none, not the default `end`.
+
+   With background-size 800%, a percentage background-position resolves as
+   (element - image) * p = -7 * elementWidth * p, so frame N sits at p = N/7,
+   NOT N/8. ui.js proves this independently: its reduced-motion still uses
+   42.857% and calls it "frame 3 of 8", and 3/7 = 0.42857.
+
+   steps(8) with the default `end` emits 0, 1/8, 2/8 ... 7/8 -> frame indices
+   0, 0.875, 1.75, 2.625 ... Every frame after the first is a SLICE OF TWO
+   FRAMES, which does not read as tearing - it reads as the strip sliding
+   continuously left to right, over and over, which is exactly how this was
+   reported from the deployed staging build.
+
+   jump-none emits 8 values INCLUDING both endpoints - 0, 1/7, 2/7 ... 7/7 -
+   landing on each frame exactly. */
 .portrait-idle {
     animation-name: portraitIdle;
-    animation-timing-function: steps(8);
+    animation-timing-function: steps(8, jump-none);
     animation-iteration-count: infinite;
 }
 
@@ -439,7 +450,7 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
     background-repeat: no-repeat;
     background-position: 0 0;
     animation-name: fxStrip;
-    animation-timing-function: steps(var(--fx-steps, 8));
+    animation-timing-function: steps(var(--fx-steps, 8), jump-none);
     animation-iteration-count: 1;
     animation-fill-mode: forwards;
     filter: drop-shadow(0 0 18px rgba(208, 168, 32, 0.35));
@@ -1457,8 +1468,27 @@ select.btn option { background: var(--panel-dark); color: var(--text-white); }
     cursor: pointer;
 }
 
-.zoom-cards { display: flex; gap: clamp(10px, 2.4vmin, 26px); }
-.zoom-card  { width: clamp(110px, 26vmin, 210px); }
+.zoom-cards { display: flex; gap: clamp(10px, 2.4vmin, 26px); flex-shrink: 0; }
+
+/* `contain`, overriding .card's `cover`.
+   .zoom-overlay is a COLUMN flex container, so .zoom-cards is a flex item
+   with the default flex-shrink: 1. Once the name, coin count, cards, hint,
+   gaps and 20px padding exceed the viewport height - which happens on any
+   short window and on most phones in landscape - the card box is squashed
+   below its 2/3 aspect ratio. `cover` answers a squashed box by CROPPING,
+   so the card's edges were cut off in the one view whose entire purpose is
+   to show the whole card.
+   flex-shrink: 0 stops the squash; `contain` means that even if some future
+   layout squashes it anyway, the art letterboxes instead of losing its
+   borders. Belt and braces, because this is the view where cropping is
+   least acceptable. */
+.zoom-card  {
+    width: clamp(110px, 26vmin, 210px);
+    max-height: 62vh;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
 .zoom-portrait { width: clamp(120px, 30vmin, 250px); }
 .zoom-video { width: min(76vw, 380px); border-radius: var(--r-md);
               border: 2px solid var(--accent-gold); }

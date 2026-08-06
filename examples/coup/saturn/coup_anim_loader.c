@@ -124,6 +124,20 @@ bool coup_anim_loaded(void)
     return s_loaded;
 }
 
+bool coup_anim_texture(int character, int frame,
+                        uint32_t* out_offset, int* out_bank)
+{
+    if (!s_loaded) return false;
+    if (character < 0 || character >= COUP_ANIM_CHARS) return false;
+    if (frame < 0 || frame >= COUP_ANIM_FRAMES) return false;
+    if (!out_offset || !out_bank) return false;
+
+    *out_offset = s_char_base_offsets[character]
+                  + (uint32_t)frame * ((COUP_ANIM_FRAME_SIZE + 7) & ~7);
+    *out_bank = ANIM_CRAM_BASE_BANK + character;
+    return true;
+}
+
 uint32_t coup_anim_vram_end(void)
 {
     return s_vram_end;

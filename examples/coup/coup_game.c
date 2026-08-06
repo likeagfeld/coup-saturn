@@ -1072,6 +1072,14 @@ static void process_rule_events(const coup_event_t* events, int count)
              * later gets it wrong. */
             g_state.winner_id = winner;
             g_state.i_won = (winner == g_state.my_id);
+            /* Same snapshot-now rule for the game-over portrait's face
+             * (design doc section 4.2 "Game over"): our own seat's cards
+             * stay FACEDOWN in players[] even for ourselves (see
+             * reveal_visible_card()'s comment in coup_render.c), so the
+             * source array differs depending on who won. */
+            g_state.winner_char = (uint8_t)coup_pick_winner_char(
+                (winner == g_state.my_id) ? g_state.my_cards
+                                           : g_state.players[winner].cards);
             if (winner == g_state.my_id) {
                 coup_log("You win! Victory!");
                 coup_audio_play_sfx(COUP_SFX_VICTORY);
@@ -1404,6 +1412,7 @@ void coup_start_game(uint32_t seed, uint8_t my_pid)
     g_state.response_timeout  = 0;
     g_state.bot_think_timer   = 0;
     g_state.winner_id         = 0;
+    g_state.winner_char       = COUP_CHAR_NONE;
     g_state.winner_name[0]    = '\0';
     g_state.declared_action   = 0;
     g_state.declared_actor    = 0;

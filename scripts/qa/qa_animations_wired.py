@@ -51,6 +51,23 @@ REQUIRED = {
     "coup_reveal_tick":        "a reveal starts and then freezes on frame 0",
     "saturn_vdp1_reserve_cmd_slot":
         "the distort commands have nowhere on the VDP1 chain to land",
+
+    # --- 2026-08-06 facelift design doc section 4.2, three treatments ---
+    "coup_pick_winner_char":
+        "the winner's face is never chosen, so the game-over portrait "
+        "has nothing to draw",
+    "coup_anim_texture":
+        "the winner portrait's raw VDP1 texture is never looked up, so "
+        "the game-over entrance dissolve draws nothing",
+    "coup_gameover_fx_observe":
+        "the game-over entrance dissolve is never armed when the screen "
+        "appears",
+    "coup_gameover_fx_tick":
+        "the game-over entrance dissolve is armed but never advances "
+        "past frame 0",
+    "coup_challenge_resolved":
+        "a resolved challenge never flashes - the table gets no signal "
+        "that a bluff was just called",
 }
 
 # Built and tested but not yet driven by a game event. Listed explicitly so

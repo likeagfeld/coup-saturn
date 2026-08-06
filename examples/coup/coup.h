@@ -273,6 +273,19 @@ typedef struct {
     bool i_won;
 
     char winner_name[COUP_MAX_NAME];  /* Snapshot at game-over time */
+
+    /* The winner's character, for the game-over portrait (design doc section
+     * 4.2 "Game over": "winner portrait scaled up with a gouraud
+     * spotlight"). Snapshotted at the SAME COUP_EVT_GAME_OVER moment as
+     * winner_id/i_won/winner_name and for the identical reason: players[]
+     * is a seat-indexed array that a LOBBY_STATE arriving on this screen
+     * rewrites to wire ids, so anything derived from it later is wrong.
+     * A COUP_CHAR_* value, or COUP_CHAR_NONE if the winner's hand somehow
+     * held no identifiable character (should not happen for a live winner,
+     * but coup_pick_winner_char() returns it rather than an invalid index
+     * if it does). */
+    uint8_t winner_char;
+
     int round_number;
 
     /* Rules viewer */
@@ -459,6 +472,23 @@ int  coup_centre_x(int container_w, int text_w);
  * handler clamps scrolling to exactly what the renderer draws. */
 #define COUP_GAMEOVER_RECAP_ROWS 5
 
+/* Frames the flash-white ramp takes to fade back to normal after a challenge
+ * resolves (design doc section 4.2 "All transitions": "Flash-white for
+ * challenge results (+k ramp)"). Short and sharp - a flash, not a fade - so
+ * it reads as punctuation on the reveal that follows rather than a wash that
+ * competes with it. Matches the scale of the existing per-screen fade-in
+ * (COUP_GAMEOVER_DISSOLVE_FRAMES / the 12-frame black ramp in
+ * coup_render_screen()) rather than inventing a new pace. */
+#define COUP_CHALLENGE_FLASH_FRAMES 12
+
+/* Frames the game-over entrance dissolve runs before the winner portrait
+ * settles into its normal, solid draw (design doc section 4.2 "Game over":
+ * "mesh + colour-offset dissolve into it"). Matches the whole-screen
+ * colour-offset fade-in's own length (coup_render_screen(),
+ * saturn_fade_start(..., 12, false)) so the two halves of the composed
+ * effect complete together. */
+#define COUP_GAMEOVER_DISSOLVE_FRAMES 12
+
 /*============================================================================
  * Card-reveal state machine
  *
@@ -594,6 +624,94 @@ int  coup_log_ring_index(int head, int count, int max_rows,
 int  coup_fx_for_action(int action);
 int  coup_fx_on_transition(const coup_fx_prev_t* prev, const coup_state_t* st);
 void coup_fx_remember(coup_fx_prev_t* prev, const coup_state_t* st);
+
+/**
+ * Detect a challenge window closing - decided, one way or the other.
+ *
+ * Design doc section 4.2 "All transitions": "Flash-white for challenge
+ * results (+k ramp)." Reuses the SAME coup_fx_prev_t snapshot
+ * coup_fx_on_transition() already keeps (it already carries `phase`), so
+ * this adds no new observed state - it is driven purely by OBSERVING
+ * coup_state_t transitions, exactly as coup_fx_on_transition() and
+ * coup_reveal_observe() already are (spec D9 - the server stays turnkey).
+ *
+ * Fires once, on the frame `phase` leaves COUP_PHASE_CHALLENGE_WAIT or
+ * COUP_PHASE_BLOCK_CHALLENGE for anything else. A resolved challenge reads
+ * the same flash whether it was won or lost - the doc asks for a flash on
+ * the RESULT, not a colour keyed to which side won it - so no outcome bit
+ * is needed to decide whether to fire.
+ *
+ * Pure - no hardware access, unit tested on the host.
+ *
+ * @param prev  previously observed state (same struct coup_fx_on_transition
+ *              diffs against; call coup_fx_remember() once per frame as
+ *              usual - this function does not mutate it)
+ * @param st    current state
+ * @return true the one frame the window closes, false otherwise
+ */
+bool coup_challenge_resolved(const coup_fx_prev_t* prev, const coup_state_t* st);
+
+/**
+ * Pick the character to show as the game-over portrait from a hand.
+ *
+ * Returns the first slot holding a real character (< COUP_NUM_CHARACTERS,
+ * i.e. not COUP_CHAR_FACEDOWN or COUP_CHAR_NONE), or COUP_CHAR_NONE if the
+ * hand holds none. The caller passes st->my_cards for the local winner (own
+ * cards are never FACEDOWN there) or st->players[winner].cards for anyone
+ * else, matching reveal_visible_card()'s rule in coup_render.c (self-owned
+ * cards stay FACEDOWN in players[] even for the local player).
+ *
+ * Pure - unit tested on the host.
+ */
+int coup_pick_winner_char(const uint8_t cards[COUP_CARDS_PER_PLAYER]);
+
+/*============================================================================
+ * Game-over entrance dissolve
+ *
+ * "mesh + colour-offset dissolve into it" (design doc section 4.2
+ * "Game over"). The colour-offset half is the SAME whole-screen fade every
+ * screen transition already gets (coup_render_screen(),
+ * saturn_fade_start()); this supplies the missing mesh half, timing the
+ * winner portrait's entrance so pal/saturn/saturn_distort.c's
+ * saturn_distort_draw_mesh_dissolve() and saturn_fade.c's colour-offset
+ * ramp run over the SAME window rather than introducing a third fade
+ * mechanism.
+ *
+ * Driven purely by OBSERVING coup_state_t transitions, exactly as
+ * coup_reveal_observe() already is: entering GAME_OVER is a `screen`
+ * transition read the identical way coup_render_screen()'s own
+ * `s_last_screen` diff already reads it, just made host-testable and
+ * given a frame counter instead of a one-shot flag.
+ *
+ * Pure - no hardware access, unit tested in tests/coup/test_gameover_fx.c.
+ *============================================================================*/
+
+typedef struct {
+    int  prev_screen;   /* last observed st->screen */
+    int  step;          /* frames since GAME_OVER was entered, capped at
+                          * COUP_GAMEOVER_DISSOLVE_FRAMES */
+    bool seeded;         /* prev_screen holds a real observation */
+} coup_gameover_fx_t;
+
+/** Clear the observer so the next coup_gameover_fx_observe() only seeds. */
+void coup_gameover_fx_init(coup_gameover_fx_t* gd);
+
+/**
+ * Diff `st->screen` against the previous observation and arm the entrance
+ * dissolve if this is the frame GAME_OVER was just entered. Call once per
+ * frame, on every screen - re-seeding off other screens is what stops the
+ * NEXT match's game-over from replaying a stale dissolve.
+ */
+void coup_gameover_fx_observe(coup_gameover_fx_t* gd, const coup_state_t* st);
+
+/** Advance the dissolve by one frame, if it is running. Call once per frame. */
+void coup_gameover_fx_tick(coup_gameover_fx_t* gd);
+
+/** True while the entrance dissolve is still running. */
+bool coup_gameover_fx_dissolving(const coup_gameover_fx_t* gd);
+
+/** Frames elapsed since GAME_OVER was entered, capped at the dissolve length. */
+int coup_gameover_fx_step(const coup_gameover_fx_t* gd);
 
 void coup_render_screen(const coup_state_t* st);
 
