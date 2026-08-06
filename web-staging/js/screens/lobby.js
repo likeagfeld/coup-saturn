@@ -19,6 +19,7 @@ import {
 import { esc, screenShell } from '../ui.js';
 import { BG, preload } from '../assets.js';
 import { audio } from '../audio.js';
+import { sfx, SFX } from '../sfx.js';
 
 const DIFF_LABELS = ['Easy', 'Medium', 'Hard'];
 const DIFF_CLASSES = ['easy', 'medium', 'hard'];
@@ -63,25 +64,35 @@ export function createLobbyScreen(app) {
         isReady = !isReady;
         readyBtn.textContent = isReady ? 'Not Ready' : 'Ready';
         readyBtn.className = isReady ? 'btn btn-red' : 'btn btn-green';
+        // coup_game.c: `g_state.my_ready ? COUP_SFX_CONFIRM : COUP_SFX_CANCEL`
+        sfx.play(isReady ? SFX.UI_CONFIRM : SFX.UI_CANCEL);
         app.connection.send(encodeReady(isReady));
     });
 
     el.querySelector('#btn-start').addEventListener('click', () => {
+        sfx.play(SFX.UI_CONFIRM);
         app.connection.send(encodeStartGame());
     });
 
     el.querySelector('#btn-add-bot').addEventListener('click', () => {
         const diff = parseInt(el.querySelector('#bot-difficulty').value, 10);
+        sfx.play(SFX.UI_CONFIRM);
         app.connection.send(encodeAddBot(diff));
     });
 
     el.querySelector('#btn-remove-bot').addEventListener('click', () => {
+        sfx.play(SFX.UI_CANCEL);
         app.connection.send(encodeRemoveBot());
     });
 
-    el.querySelector('#btn-rules-lobby').addEventListener('click', () => app.showRules());
+    el.querySelector('#btn-rules-lobby').addEventListener('click', () => {
+        sfx.play(SFX.UI_CONFIRM);
+        app.showRules();
+    });
     el.querySelector('#btn-mute-lobby').addEventListener('click', (e) => {
-        e.currentTarget.textContent = audio.toggleMute() ? 'Unmute' : 'Mute';
+        const muted = audio.toggleMute();
+        e.currentTarget.textContent = muted ? 'Unmute' : 'Mute';
+        if (!muted) sfx.play(SFX.UI_CONFIRM);
     });
 
     preload([BG.table]);

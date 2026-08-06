@@ -40,13 +40,18 @@ import { createNameEntryScreen, handleUsernameTaken } from './screens/name-entry
 import { createLobbyScreen, updateLobbyPlayers, addLobbyLog } from './screens/lobby.js';
 import {
     createGameScreen, renderGameState, addGameLog, playRelayFx, stopTimer,
+    resetGameLog,
 } from './screens/game.js';
 import { createGameOverScreen } from './screens/game-over.js';
 import { createRulesOverlay } from './screens/rules.js';
 import { fadeIn } from './fx.js';
+import { installUnlockHooks } from './audio.js';
+import {
+    onRelay as sfxOnRelay, onEvents as sfxOnEvents, resetSfxState,
+} from './sfx-map.js';
 
 /** Bumped by hand when the staging build is redeployed; shown in the badge. */
-const STAGING_BUILD = '2026-08-06';
+const STAGING_BUILD = '2026-08-06b';
 
 class CoupApp {
     constructor() {
@@ -83,6 +88,11 @@ class CoupApp {
         this._setupMessageHandlers();
 
         this.connection.onKicked = () => this._showKickPopup();
+
+        // Sound effects need an AudioContext resumed from a real gesture, and
+        // the title screen's Start button is not guaranteed to be the first
+        // thing a returning player touches. See audio.js.
+        installUnlockHooks();
 
         // Mobile autoplay workaround, kept for the one remaining <video> (the
         // easter egg): browsers refuse programmatic play() until a gesture.
@@ -158,6 +168,12 @@ class CoupApp {
                 this.engine.processRelay(entry.inputType, entry.pid, entry.data);
                 this.lastRelaySeq = entry.seq;
             }
+            // A resync replays every relay we missed in one go. Its events must
+            // be drained HERE, silently: left in the queue they would be
+            // flushed by the next relay and played as a burst of a dozen stale
+            // cues, and if the match ended during the missed window there is no
+            // next relay at all, so the game-over transition would never fire.
+            this._consumeEvents(this.engine.flushEvents(), true);
             if (this.currentScreen === 'game') renderGameState(this);
         });
 
@@ -185,6 +201,10 @@ class CoupApp {
         this._rebuildNameMapping();
         this.engine.initGame(seed, myPid, playerOrder.length);
         this.lastRelaySeq = -1;
+        // A fresh match starts with an empty recap and no remembered turn, or
+        // the game-over screen would show the LAST match's final actions.
+        resetGameLog();
+        resetSfxState();
         this.changeScreen('game');
     }
 
@@ -224,12 +244,28 @@ class CoupApp {
         this._logRelay(inputType, playerId, relayData);
         if (this.currentScreen === 'game') {
             playRelayFx(this, inputType, playerId, relayData);
+            sfxOnRelay(this, inputType, playerId, relayData);
         }
 
         this.engine.processRelay(inputType, playerId, relayData);
         this.lastRelaySeq = seq;
 
-        const events = this.engine.flushEvents();
+        this._consumeEvents(this.engine.flushEvents(), false);
+
+        if (this.currentScreen === 'game') renderGameState(this);
+    }
+
+    /**
+     * Turn engine events into log lines, sounds and the game-over transition.
+     *
+     * @param {Array}   events  from engine.flushEvents()
+     * @param {boolean} silent  true when catching up on a resync, where the
+     *                          events describe things that already happened
+     */
+    _consumeEvents(events, silent) {
+        if (!events || !events.length) return;
+        if (!silent) sfxOnEvents(this, events);
+
         for (const evt of events) {
             if (evt.type === 'game_over') {
                 const winnerName = this.playerNames[evt.winnerId] || `Player ${evt.winnerId + 1}`;
@@ -240,8 +276,6 @@ class CoupApp {
                 addGameLog(`${eName} is eliminated!`);
             }
         }
-
-        if (this.currentScreen === 'game') renderGameState(this);
     }
 
     _logRelay(inputType, playerId, data) {

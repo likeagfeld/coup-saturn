@@ -36,6 +36,9 @@ import {
 } from '../fx.js';
 import { esc, screenShell, fxLayer, applyPortrait } from '../ui.js';
 import { audio } from '../audio.js';
+import { LogRing, LOG_CAPACITY } from '../log-ring.js';
+import { sfx, SFX } from '../sfx.js';
+import { onDeltas as sfxOnDeltas } from '../sfx-map.js';
 
 const CHAR_CSS = ['duke', 'assassin', 'captain', 'ambassador', 'contessa'];
 
@@ -105,10 +108,17 @@ export function createGameScreen(app) {
     _prev = null;
     _pending = null;
 
-    el.querySelector('#btn-rules-game').addEventListener('click', () => app.showRules());
+    el.querySelector('#btn-rules-game').addEventListener('click', () => {
+        sfx.play(SFX.UI_CONFIRM);
+        app.showRules();
+    });
     el.querySelector('#btn-log-game').addEventListener('click', () => toggleLogOverlay(app));
     el.querySelector('#btn-mute-game').addEventListener('click', (e) => {
-        e.currentTarget.textContent = audio.toggleMute() ? 'Unmute' : 'Mute';
+        const muted = audio.toggleMute();
+        e.currentTarget.textContent = muted ? 'Unmute' : 'Mute';
+        // Only on the way back IN: a confirmation beep that fires as you press
+        // Mute is the one sound guaranteed to annoy.
+        if (!muted) sfx.play(SFX.UI_CONFIRM);
     });
 
     return el;
@@ -171,6 +181,11 @@ export function renderGameState(app) {
     renderHand(app);
     renderPhasePanel(app);
     renderTurnLabel(app);
+
+    // Coins moving and the turn passing are the two cues the engine does not
+    // announce as events, so they are read off the same snapshot diff the coin
+    // arcs already use. See js/sfx-map.js onDeltas().
+    sfxOnDeltas(app, _pending ? _pending.coinDeltas : null);
 
     if (_pending) runDeltaAnimations(app);
     _prev = next;
@@ -285,6 +300,7 @@ function createSeat(app, pid) {
 
     seat.addEventListener('click', () => {
         if (app._pendingTargetAction !== undefined && view.alive) {
+            sfx.play(SFX.UI_CONFIRM);
             app.connection.send(encodeAction(app._pendingTargetAction, pid));
             app._pendingTargetAction = undefined;
             renderGameState(app);
@@ -368,6 +384,7 @@ function renderHand(app) {
         cardEl.addEventListener('click', () => {
             const idx = parseInt(cardEl.dataset.idx, 10);
             if (mustDiscard && !hand[idx].revealed) {
+                sfx.play(SFX.UI_CONFIRM);
                 app.connection.send(encodeLoseInfluence(idx));
                 return;
             }
@@ -465,7 +482,16 @@ function note(bodyEl, text) {
     bodyEl.appendChild(d);
 }
 
-function menuItem(bodyEl, { label, detail, cost, cssClass, danger, onClick, disabled }) {
+/**
+ * One row of the phase menu.
+ *
+ * Every menu choice in the game goes through here, which is why the menu
+ * confirm cue is wired here and not at 14 call sites - Saturn plays
+ * COUP_SFX_CONFIRM from its one A-button handler for the same reason. `sound`
+ * overrides it for the rows that are a "B / back" rather than an "A".
+ */
+function menuItem(bodyEl, { label, detail, cost, cssClass, danger, onClick,
+                            disabled, sound = SFX.UI_CONFIRM }) {
     const item = document.createElement('div');
     item.className = 'menu-item'
         + (disabled ? ' disabled' : '')
@@ -475,7 +501,9 @@ function menuItem(bodyEl, { label, detail, cost, cssClass, danger, onClick, disa
         ${detail ? `<span class="item-detail">${esc(detail)}</span>` : '<span></span>'}
         ${cost ? `<span class="item-cost">${esc(cost)}</span>` : '<span></span>'}
     `;
-    if (!disabled && onClick) item.addEventListener('click', onClick);
+    if (!disabled && onClick) {
+        item.addEventListener('click', (e) => { sfx.play(sound); onClick(e); });
+    }
     bodyEl.appendChild(item);
     return item;
 }
@@ -525,6 +553,7 @@ function renderTargetSelection(app, bodyEl) {
     menuItem(bodyEl, {
         label: 'Cancel',
         danger: true,
+        sound: SFX.UI_CANCEL,       // this row is the B button, not the A
         onClick: () => {
             app._pendingTargetAction = undefined;
             renderGameState(app);
@@ -662,9 +691,11 @@ function renderExchange(app, titleEl, bodyEl) {
             if (selected.has(i)) {
                 selected.delete(i);
                 el.classList.remove('selectable');
+                sfx.play(SFX.UI_CANCEL);
             } else if (selected.size < 2) {
                 selected.add(i);
                 el.classList.add('selectable');
+                sfx.play(SFX.UI_CONFIRM);
             }
             if (selected.size === 2) {
                 const picks = Array.from(selected);
@@ -747,11 +778,28 @@ export function playRelayFx(app, inputType, playerId, data) {
    ========================================================================== */
 
 let _logOverlay = null;
-const _logHistory = [];
+
+/* The match action log.
+ *
+ * A ring, with the same head/count writer semantics as Saturn's coup_log(),
+ * because the game-over recap reads a WINDOW of it and that window is where
+ * Saturn's ordering bug lived. Every read goes through log-ring.js so there is
+ * exactly one place the entry-number -> slot conversion can be got wrong, and
+ * scripts/qa/qa_web_log_ring.mjs stands on it. */
+const _logRing = new LogRing(LOG_CAPACITY);
+
+/** The match log, for the game-over recap. */
+export function getLogRing() {
+    return _logRing;
+}
+
+/** Wipe the log when a new match begins, so a recap cannot show the last one. */
+export function resetGameLog() {
+    _logRing.clear();
+}
 
 export function addGameLog(text) {
-    _logHistory.push(text);
-    if (_logHistory.length > 200) _logHistory.shift();
+    _logRing.push(text);
 
     const logEl = document.getElementById('game-log');
     if (logEl) {
@@ -783,10 +831,12 @@ function makeLogLine(text) {
 
 function toggleLogOverlay(app) {
     if (_logOverlay) {
+        sfx.play(SFX.UI_CANCEL);
         _logOverlay.remove();
         _logOverlay = null;
         return;
     }
+    sfx.play(SFX.UI_CONFIRM);
 
     _logOverlay = document.createElement('div');
     _logOverlay.className = 'overlay';
@@ -799,14 +849,16 @@ function toggleLogOverlay(app) {
     `;
 
     const body = _logOverlay.querySelector('#log-overlay-body');
-    if (!_logHistory.length) {
+    const history = _logRing.toArray();
+    if (!history.length) {
         body.innerHTML = '<div class="log-line text-dim">No entries yet.</div>';
     } else {
-        _logHistory.forEach(t => body.appendChild(makeLogLine(t)));
+        history.forEach(t => body.appendChild(makeLogLine(t)));
         setTimeout(() => { body.scrollTop = body.scrollHeight; }, 40);
     }
 
     _logOverlay.querySelector('#btn-close-log').addEventListener('click', () => {
+        sfx.play(SFX.UI_CANCEL);
         _logOverlay.remove();
         _logOverlay = null;
     });

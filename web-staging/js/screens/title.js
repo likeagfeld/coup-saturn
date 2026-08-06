@@ -10,6 +10,7 @@
 import { LOGO, BGM, CHARACTERS, BG, preload } from '../assets.js';
 import { portraitMedallion, screenShell } from '../ui.js';
 import { audio } from '../audio.js';
+import { sfx, SFX } from '../sfx.js';
 
 export function createTitleScreen(app) {
     const el = screenShell('title', 'title');
@@ -45,11 +46,18 @@ export function createTitleScreen(app) {
 
     el.querySelector('#btn-play').addEventListener('click', () => {
         audio.startBGM(BGM);
+        // Unlocks the AudioContext as well as the BGM element - this is the
+        // gesture that makes every later effect audible.
         audio.resumeFromUserGesture();
+        sfx.play(SFX.UI_CONFIRM);
         app.changeScreen('connecting');
     });
 
-    el.querySelector('#btn-rules-title').addEventListener('click', () => app.showRules());
+    el.querySelector('#btn-rules-title').addEventListener('click', () => {
+        audio.resumeFromUserGesture();
+        sfx.play(SFX.UI_CONFIRM);
+        app.showRules();
+    });
 
     // The next screens' backdrops, fetched while the player reads the title.
     preload([BG.connecting, BG.lobby]);
