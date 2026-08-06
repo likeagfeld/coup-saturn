@@ -120,7 +120,8 @@ export function createTitleScreen(app) {
         // buckets, so it has plenty of pattern. It was the 0.38 far-side
         // OPACITY flattening that pattern against a dark backdrop until the
         // card read as an empty rectangle. The dim is what got fixed; the
-        // back stays. CSS counter-mirrors it so the emblem is not reversed.
+        // back stays, and CSS rotates it 180 with nothing else - the card's
+        // own rotation undoes the flip, so no counter-mirror is needed.
         card.querySelector('.tc-face-back').style.backgroundImage =
             `url("${CARD_BACK}")`;
         ring.appendChild(card);
