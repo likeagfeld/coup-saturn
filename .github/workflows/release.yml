@@ -34,6 +34,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # A disc built from a checkout that is missing an asset is silently
+      # wrong: the hermetic Saturn image has no Pillow and cannot regenerate
+      # the backgrounds, so the build simply omits them and still exits 0.
+      # MEASURED: the v2.0-beta CI disc came out 73,728 B smaller than the
+      # local one - exactly one sector-aligned BGSPLASH.BIN, which was
+      # referenced by coup_bg_index.h but had never been committed.
+      - name: Gate - every indexed disc asset is tracked
+        run: python3 scripts/qa/qa_disc_assets_tracked.py
+
       - name: Build Saturn disc image
         run: make coup-saturn
 
@@ -42,9 +51,14 @@ jobs:
         run: |
           set -e
           STAGE=$(mktemp -d)
-          # Match the existing v1.0-beta layout: COUP.cue + track01.bin + rebellion.wav.
-          cp build/coup_game/game.cue       "$STAGE/COUP.cue"
+          # Layout must match what the release notes tell users to burn:
+          # game.cue (NOT COUP.cue) + track01.bin + rebellion.wav, flat, with
+          # the README alongside. The old COUP.cue naming came from v1.0-beta
+          # and contradicted the notes.
+          cp build/coup_game/game.cue       "$STAGE/game.cue"
           cp build/coup_game/track01.bin    "$STAGE/track01.bin"
+          sed "s/@VERSION@/${GITHUB_REF_NAME}/" scripts/release/README.txt \
+            > "$STAGE/README.txt"
           if [ -f build/coup_game/rebellion.wav ]; then
             cp build/coup_game/rebellion.wav "$STAGE/rebellion.wav"
           fi
