@@ -1066,7 +1066,12 @@ class CoupServer:
             info.last_user_action = time.time()
             log.info("Returning user %s from %s", username, info.address)
             self.send_to(sock, build_welcome_back(info.user_id, client_uuid, username))
-            self.broadcast_lobby_state()
+            if self.game_active:
+                # Spectator: give this client the roster so it can name the
+                # seats, without touching anyone already playing.
+                self.send_lobby_state_to(sock)
+            else:
+                self.broadcast_lobby_state()
         else:
             self.send_to(sock, build_username_required())
 
@@ -1168,6 +1173,10 @@ class CoupServer:
             log.debug("Suppressed lobby-state broadcast during an active game")
             return
 
+        self.send_to_all(self.build_lobby_state_frame())
+
+    def build_lobby_state_frame(self):
+        """The roster frame, without deciding who receives it."""
         players = []
         for info in self.get_auth_players():
             players.append({"id": info.user_id, "name": info.username,
@@ -1178,8 +1187,26 @@ class CoupServer:
             players.append({"id": next_id, "name": bot["name"], "ready": True,
                             "is_bot": True, "difficulty": bot.get("difficulty", BOT_DIFFICULTY_DEFAULT)})
             next_id += 1
-        frame = build_lobby_state(players)
+        return build_lobby_state(players)
+
+    def send_to_all(self, frame):
         self.broadcast(frame)
+
+    def send_lobby_state_to(self, sock):
+        """Roster to ONE client, even while a game is running.
+
+        A client that authenticates mid-game is a SPECTATOR, and it needs the
+        roster to label the seats it is watching. Broadcasting it is what
+        froze matches - every client rebuilds its player identity from this
+        message - but sending it to the one socket that just connected
+        disturbs nobody.
+
+        Without this the Saturn client shows ITS OWN name on a seat: on auth
+        it seeds players[0] with its own name, commented "Server LOBBY_STATE
+        will overwrite when it arrives", and once the broadcast was correctly
+        suppressed during a game, that overwrite never came.
+        """
+        self.send_to(sock, self.build_lobby_state_frame())
 
     def _handle_ready(self, sock, info, payload):
         if not info.authenticated or self.game_active:
