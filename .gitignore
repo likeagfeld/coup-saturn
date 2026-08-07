@@ -86,12 +86,28 @@ __pycache__/
 # Delivered asset packs: keep the extracted PNGs, not the archives
 *.zip
 
-# NOTE: examples/coup/saturn/cd/*.BIN are deliberately TRACKED, not ignored.
+# examples/coup/saturn/cd/*.BIN are deliberately TRACKED, not ignored.
 # They are the streamed scene backgrounds. The Docker build copies them onto
 # the disc image but cannot regenerate them - convert_backgrounds.py needs
 # Python and Pillow, which the hermetic Saturn image does not carry. Ignoring
 # them would make a fresh clone build a disc whose every background is black,
 # with no build-time symptom. 505 KB total.
+#
+# This used to be only a comment, and the exemption existed solely because
+# someone had run `git add -f` on the files that existed at the time. It did
+# not cover new ones: BGSPLASH.BIN was authored, referenced by
+# coup_bg_index.h, and shipped on the v2.0-beta disc while never entering the
+# repo - and `git status` stayed clean, because the file was ignored. The
+# rules below make the exemption real.
+#
+# The directory must be re-included FIRST: git does not descend into an
+# excluded directory, so a negation for files inside `cd/` is never even
+# considered until `cd/` itself is un-excluded. These also override the
+# `*.bin` rule above, which matches `.BIN` on case-insensitive filesystems.
+#
+# Enforced by scripts/qa/qa_disc_assets_tracked.py.
+!examples/coup/saturn/cd/
+!examples/coup/saturn/cd/*.BIN
 
 # QA captures and build logs - regenerate with scripts/qa/capture_all_screens.sh
 build/qa/*.log
