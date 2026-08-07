@@ -1982,8 +1982,7 @@ static void coup_render_lobby(const coup_state_t* st)
         bool is_cursor = (!st->lobby_naming && i == st->lobby_cursor);
 
         if (i < st->player_count) {
-            const coup_player_t* p = &st->players[i];
-            bool is_ready = p->is_self ? st->my_ready : p->ready;
+            bool is_ready = coup_lobby_row_ready(st, i);
 
             /* An occupied slot is washed with light; see coup_shading.c. The
              * design doc's lobby treatment asks for the seated players to
@@ -2022,7 +2021,7 @@ static void coup_render_lobby(const coup_state_t* st)
 
         if (i < st->player_count) {
             const coup_player_t* p = &st->players[i];
-            bool is_ready = p->is_self ? st->my_ready : p->ready;
+            bool is_ready = coup_lobby_row_ready(st, i);
             uint32_t name_color = p->is_self ? COUP_TEXT_BLUE : COUP_TEXT_WHITE;
 
             /* Cursor + name */
@@ -2108,9 +2107,7 @@ static void coup_render_lobby(const coup_state_t* st)
     } else {
         int ri, ready_count = 0;
         for (ri = 0; ri < st->player_count; ri++) {
-            bool rdy = st->players[ri].is_self
-                     ? st->my_ready : st->players[ri].ready;
-            if (rdy) ready_count++;
+            if (coup_lobby_row_ready(st, ri)) ready_count++;
         }
         snprintf(line, sizeof(line), "Ready: %d/%d", ready_count, st->player_count);
         CUI_DISPLAY()->draw_text_sprite(L->status_text_x + 120, L->status_text_y, line, COUP_TEXT_WHITE);

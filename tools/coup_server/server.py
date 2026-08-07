@@ -1068,8 +1068,20 @@ class CoupServer:
             self.send_to(sock, build_welcome_back(info.user_id, client_uuid, username))
             if self.game_active:
                 # Spectator: give this client the roster so it can name the
-                # seats, without touching anyone already playing.
+                # seats, without touching anyone already playing...
                 self.send_lobby_state_to(sock)
+                # ...and then TELL IT a game is running. Sending only the
+                # roster left it believing it was in a lobby, because a client
+                # has no other source for "a match is already under way": it
+                # learns that from GAME_START carrying the 0xFF spectator pid,
+                # and without it coup_start_game() never runs and
+                # is_spectator stays false. Reported as a Saturn dialling in
+                # mid-match and landing in the lobby instead of spectating.
+                #
+                # This is the path a Saturn takes every time after its first
+                # ever connection, because it keeps its UUID in backup RAM -
+                # which is why the new-user path below appeared to work.
+                self.enroll_spectator(sock, info)
             else:
                 self.broadcast_lobby_state()
         else:
@@ -1108,24 +1120,17 @@ class CoupServer:
 
         log.info("New user %s (id=%d) from %s", username, info.user_id, info.address)
         self.send_to(sock, build_welcome(info.user_id, new_uuid, username))
-        self.broadcast_lobby_state()
 
         if self.game_active:
-            # Enroll as spectator
-            info.is_spectating = True
-            total_relays = len(self.relay_log)
-            # Send GAME_START with spectator sentinel pid (0xFF)
-            player_order = [p.user_id for p in self.turn_order]
-            for _ in self.in_process_bots:
-                player_order.append(0xFF)
-            self.send_to(sock, build_game_start(0xFF, self.engine_seed, player_order))
-            # Send RESYNC_FULL with spectator pid + relay count
-            self.send_to(sock, build_resync_full(self.engine_seed, 0xFF, total_relays))
-            # Replay all relays
-            for idx, (input_type, pid, data) in enumerate(self.relay_log):
-                self.send_to(sock, build_input_relay(input_type, pid, data, seq=idx))
-            self.send_to(sock, build_log("Spectating game in progress..."))
+            # The roster has to come FIRST and has to be a unicast:
+            # broadcast_lobby_state() correctly refuses to fire during a match,
+            # so a client authenticating here used to be enrolled as a
+            # spectator without ever being told who it was watching, and
+            # coup_start_game() reorders players[] against that roster.
+            self.send_lobby_state_to(sock)
+            self.enroll_spectator(sock, info)
         else:
+            self.broadcast_lobby_state()
             players = self.get_auth_players()
             idx = next((i for i, p in enumerate(players) if p is info), -1)
             if idx >= MAX_GAME_PLAYERS:
@@ -1207,6 +1212,37 @@ class CoupServer:
         suppressed during a game, that overwrite never came.
         """
         self.send_to(sock, self.build_lobby_state_frame())
+
+    def enroll_spectator(self, sock, info):
+        """Bring one client up to date on a match already in progress.
+
+        Both authentication paths must call this. It existed only inside
+        _handle_set_username (the NEW-user path), so a RETURNING client -
+        which is what a Saturn is on every connection after its first, since
+        it keeps its UUID in backup RAM - was authenticated, handed the
+        roster, and then left to conclude it was sitting in a lobby.
+
+        Send the roster BEFORE calling this: the client reorders its players[]
+        against it when GAME_START arrives.
+
+        No protocol change - the same three messages the new-user path already
+        sent, to a client that was not being sent them. D9 holds.
+        """
+        info.is_spectating = True
+        total_relays = len(self.relay_log)
+        # GAME_START with the spectator sentinel pid (0xFF). This is the only
+        # thing that tells a client a match is running; coup_start_game() sets
+        # is_spectator from it (coup_game.c:1385) and moves off the lobby.
+        player_order = [p.user_id for p in self.turn_order]
+        for _ in self.in_process_bots:
+            player_order.append(0xFF)
+        self.send_to(sock, build_game_start(0xFF, self.engine_seed, player_order))
+        # RESYNC_FULL with spectator pid + relay count, then the replay, so the
+        # watcher's local engine reaches the current position.
+        self.send_to(sock, build_resync_full(self.engine_seed, 0xFF, total_relays))
+        for idx, (input_type, pid, data) in enumerate(self.relay_log):
+            self.send_to(sock, build_input_relay(input_type, pid, data, seq=idx))
+        self.send_to(sock, build_log("Spectating game in progress..."))
 
     def _handle_ready(self, sock, info, payload):
         if not info.authenticated or self.game_active:

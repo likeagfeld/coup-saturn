@@ -391,6 +391,22 @@ coup_screen_t coup_get_screen(void)
     return g_state.screen;
 }
 
+int coup_self_row(const coup_state_t* st)
+{
+    int i;
+    if (!st) return -1;
+    for (i = 0; i < st->player_count && i < COUP_MAX_PLAYERS; i++) {
+        if (st->players[i].is_self) return i;
+    }
+    return -1;
+}
+
+bool coup_lobby_row_ready(const coup_state_t* st, int row)
+{
+    if (!st || row < 0 || row >= st->player_count) return false;
+    return st->players[row].ready;
+}
+
 void coup_log(const char* text)
 {
     int dest;
@@ -1362,6 +1378,10 @@ static void lobby_sync_players(void)
     g_state.players[0].is_self = true;
     g_state.players[0].is_bot  = false;
     g_state.players[0].difficulty = 0;
+    /* Keep the row and the shadow in step - the lobby now reads readiness
+     * from the row for self and others alike, so a stale row would show a
+     * readiness from a previous match. */
+    g_state.players[0].ready   = g_state.my_ready;
 
     for (i = 0; i < g_state.bot_count; i++) {
         int pi = i + 1;
@@ -1923,9 +1943,22 @@ static void update_lobby(cui_input_action_t action)
             break;
 
         case CUI_INPUT_CONFIRM:
-            /* A = toggle ready */
-            g_state.my_ready = !g_state.my_ready;
-            g_state.players[0].ready = g_state.my_ready;
+            /* A = toggle ready.
+             *
+             * This used to write players[0].ready unconditionally. Row 0 is
+             * only the local player in an OFFLINE lobby; online the roster
+             * arrives in server order, so on a Saturn that dialled in second
+             * row 0 is somebody else - and one press lit two seats, the web
+             * player's row from this write and our own row from the
+             * my_ready shadow the renderer used to special-case. Write to
+             * the row we actually own, and to nobody if we own none. */
+            {
+                int self_row = coup_self_row(&g_state);
+                g_state.my_ready = !g_state.my_ready;
+                if (self_row >= 0) {
+                    g_state.players[self_row].ready = g_state.my_ready;
+                }
+            }
             coup_audio_play_sfx(g_state.my_ready ? COUP_SFX_CONFIRM : COUP_SFX_CANCEL);
             if (g_state.online_mode && g_transport) {
                 int sz = coup_encode_ready(g_tx_buf);
@@ -2091,11 +2124,19 @@ static void update_game_over(cui_input_action_t action)
             lobby_sync_players();
         } else {
             /* Online: return to lobby */
+            int self_row;
             g_state.is_spectator = false;
             g_state.my_id    = g_state.server_user_id;  /* Restore for lobby is_self checks */
             g_state.screen   = COUP_SCREEN_LOBBY;
             g_state.phase    = COUP_PHASE_IDLE;
             g_state.my_ready = false;
+            /* _end_game() clears every client's ready flag server-side, so
+             * clear ours here too rather than showing a readiness carried
+             * over from the match that just finished. */
+            self_row = coup_self_row(&g_state);
+            if (self_row >= 0) {
+                g_state.players[self_row].ready = false;
+            }
         }
     }
 }
@@ -2591,9 +2632,32 @@ static void process_message(const uint8_t* frame, int len)
             g_state.players[i].is_bot     = (p[1] != 0);
             g_state.players[i].difficulty = p[2];
             g_state.players[i].alive      = true;
-            g_state.players[i].is_self    = (g_state.players[i].id == g_state.my_id);
+            /* WIRE vs WIRE. players[].id was just refilled with server
+             * user_ids, so it must be compared against the wire key, NOT
+             * against my_id - my_id is still an engine SEAT INDEX whenever
+             * this message lands during or just after a game, and the two
+             * namespaces overlap numerically (see the id-semantics block in
+             * coup.h). Comparing them matched the wrong player's row. */
+            g_state.players[i].is_self    =
+                (g_state.players[i].id == g_state.server_user_id);
             if (g_state.players[i].is_bot) g_state.bot_count++;
             p += 3; remaining -= 3;
+        }
+
+        /* The server is authoritative about readiness, including OUR OWN.
+         *
+         * A READY pressed while a game is still running is dropped on the
+         * floor by the server (_handle_ready returns early on game_active,
+         * server.py:1212). The client had already flipped its local
+         * my_ready shadow, and while the self row displayed that shadow
+         * instead of the roster, nothing could ever correct it - so the
+         * Saturn showed itself ready permanently while the server and the
+         * web client showed it unready. Take the roster's answer. */
+        {
+            int self_row = coup_self_row(&g_state);
+            if (self_row >= 0) {
+                g_state.my_ready = g_state.players[self_row].ready;
+            }
         }
 
         /* Clamp lobby cursor to valid range */

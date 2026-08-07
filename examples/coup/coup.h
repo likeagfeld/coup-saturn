@@ -205,6 +205,83 @@ typedef struct {
     /* Players */
     int player_count;
     coup_player_t players[COUP_MAX_PLAYERS];
+    /*========================================================================
+     * WHO AM I - the authoritative meaning of every id in this struct.
+     *
+     * This project has now produced FOUR bugs from one variable meaning two
+     * things at two different times (VICTORY/DEFEAT 7cbc219, game-over recap
+     * a58c7ed, spectator name ac3e356, and the lobby READY collision this
+     * block was written for). Read this before touching any of them.
+     *
+     * There are TWO id namespaces and they OVERLAP numerically:
+     *
+     *   WIRE user_id   1, 2, 3...  assigned by the server, one per
+     *                              connection, never reused while that
+     *                              connection lives. server.py:679 starts
+     *                              next_user_id at 1 and :1063/:1104
+     *                              increment it. Stable across games.
+     *
+     *   ENGINE seat    0, 1, 2...  a dense index into players[] and into the
+     *                              rule engine's own player table. Assigned
+     *                              at coup_start_game(). Valid only for the
+     *                              lifetime of ONE game.
+     *
+     * Both start small and count up, so seat 1 and wire user_id 1 are the
+     * same NUMBER belonging to two different people. Any comparison that
+     * mixes the two will silently match the wrong player - it will not crash,
+     * it will put somebody else's name, highlight or READY lamp on your seat.
+     *
+     * Field by field:
+     *
+     *   server_user_id  THE WIRE KEY, and the only id that survives a game.
+     *                   Set once from WELCOME/WELCOME_BACK (coup_game.c:2504)
+     *                   and never changed again for the life of the
+     *                   connection. This is what "me" means in the lobby.
+     *
+     *   my_id           MEANS TWO THINGS, by design, and that is why it is
+     *                   dangerous:
+     *                     - in the LOBBY it is the wire user_id, copied from
+     *                       server_user_id (coup_game.c:2503, and restored on
+     *                       the game-over confirm at :2095);
+     *                     - during a GAME it is the ENGINE SEAT INDEX, set
+     *                       from the GAME_START payload (coup_game.c:1386),
+     *                       and every rule-engine comparison in this file
+     *                       uses it that way.
+     *                   NEVER compare my_id against a wire id. Compare
+     *                   server_user_id.
+     *
+     *   players[].id    ALSO MEANS TWO THINGS, and switches at the same
+     *                   moments my_id does:
+     *                     - after COUP_MSG_LOBBY_STATE it holds WIRE user_ids
+     *                       (coup_game.c:2581);
+     *                     - after coup_start_game() it holds SEAT INDICES,
+     *                       normalised so players[i].id == i
+     *                       (coup_game.c:1391).
+     *                   A LOBBY_STATE can arrive while my_id is still a seat
+     *                   index - _end_game() clears game_active and broadcasts
+     *                   the roster before the player has confirmed the
+     *                   game-over screen (server.py:1690,1713) - so the two
+     *                   fields are NOT guaranteed to be in the same namespace
+     *                   at the same instant. That window is the bug.
+     *
+     *   players[].is_self
+     *                   The DERIVED answer to "which row is me", and the only
+     *                   thing the UI should ask. It has exactly two writers,
+     *                   one per namespace, and each compares like with like:
+     *                     - the LOBBY_STATE handler, against server_user_id
+     *                       (wire vs wire);
+     *                     - coup_start_game(), against the engine pid
+     *                       (seat vs seat).
+     *                   Use coup_self_row() to read it. Never assume row 0 -
+     *                   the roster is in server order, and the local player
+     *                   is only at row 0 by coincidence.
+     *
+     *   engine pid      The rule engine's own index, identical to the seat
+     *                   index by construction (coup_start_game normalises
+     *                   players[i].id to i precisely so they agree). 0xFF is
+     *                   the SPECTATOR sentinel: not a seat, owns no row, and
+     *                   is_self is false everywhere.
+     *======================================================================*/
     uint8_t my_id;
     uint8_t server_user_id;    /* Server-assigned user_id (persistent across games) */
     uint8_t my_cards[COUP_CARDS_PER_PLAYER]; /* Our actual hand */
@@ -449,6 +526,39 @@ void coup_start_local_game(void);
 
 /* Unified game start: initializes engine from lobby players[].is_bot state */
 void coup_start_game(uint32_t seed, uint8_t my_pid);
+
+/*============================================================================
+ * Lobby identity helpers
+ *
+ * These exist so the "which row is me, and is that row ready" decision has
+ * exactly ONE implementation. It previously had four copies of
+ *
+ *     p->is_self ? st->my_ready : p->ready
+ *
+ * (coup_render.c slot backgrounds, slot text, the "Ready: n/m" counter).
+ *============================================================================*/
+
+/**
+ * Index of the local player's row in players[], or -1 if we own no row
+ * (a spectator, or a roster that does not include us yet).
+ *
+ * Reads the derived is_self mark rather than re-deriving it, so there is one
+ * definition of "me" and not one per caller. NEVER assume row 0: the roster
+ * arrives in server order and the local player sits wherever the server put
+ * them. A hardcoded players[0] in the READY handler is what lit two seats
+ * from one button press.
+ */
+int coup_self_row(const coup_state_t* st);
+
+/**
+ * Ready flag to DISPLAY for lobby row `row`.
+ *
+ * One row, one answer, and the answer is the roster's - players[row].ready.
+ * The local player's optimistic press is written INTO their own row so that
+ * self and everyone else are read the same way, and so a LOBBY_STATE can
+ * correct a press the server never accepted. Rows out of range are not ready.
+ */
+bool coup_lobby_row_ready(const coup_state_t* st, int row);
 
 /*============================================================================
  * Rendering API (coup_render.c)
