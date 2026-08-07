@@ -344,10 +344,32 @@ def gate_no_qa_build():
     info("J", "no QA screen-forcing in this build")
 
 
+def gate_disc_assets_tracked():
+    """Every background the disc streams must be reproducible from git.
+
+    BGSPLASH.BIN shipped on v2.0-beta while never entering the repo: the
+    `cd/` ignore rule kept `git status` clean, so nothing anywhere reported
+    it. The hermetic Saturn image has no Pillow, so an untracked background
+    cannot be regenerated at build time - a fresh clone would simply build a
+    disc without that scene.
+
+    Delegated to the standalone gate so it stays runnable on its own.
+    """
+    p = subprocess.run([sys.executable, "scripts/qa/qa_disc_assets_tracked.py"],
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    out = p.stdout.decode("utf-8", "replace")
+    if p.returncode != 0:
+        detail = "; ".join(ln.strip() for ln in out.splitlines()
+                           if ln.startswith("RED:"))
+        fail("K", detail or "qa_disc_assets_tracked reported RED")
+        return
+    info("K", "every indexed background is tracked and matches HEAD")
+
+
 def main():
     for g in (gate_assets, gate_transparency, gate_animation, gate_vdp1,
               gate_cram, gate_headroom, gate_preprocessor, gate_centring,
-              gate_implicit_decls, gate_no_qa_build):
+              gate_implicit_decls, gate_no_qa_build, gate_disc_assets_tracked):
         try:
             g()
         except Exception as exc:                       # noqa: BLE001
